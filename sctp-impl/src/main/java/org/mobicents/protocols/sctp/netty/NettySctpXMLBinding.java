@@ -57,10 +57,12 @@ public class NettySctpXMLBinding extends XMLBinding {
 
 	};
 
-	protected XMLFormat getFormat(Class forClass) throws XMLStreamException {
+	@Override
+	protected XMLFormat getFormat(Class forClass) {
 		if (NettyAssociationMap.class.equals(forClass)) {
 			return ASSOCIATION_MAP;
 		}
 		return super.getFormat(forClass);
 	}
+
 }

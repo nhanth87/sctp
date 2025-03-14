@@ -59,7 +59,8 @@ public class SctpXMLBinding extends XMLBinding {
 
 	};
 
-	protected XMLFormat getFormat(Class forClass) throws XMLStreamException {
+	@Override
+	protected XMLFormat getFormat(Class forClass) {
 		if (AssociationMap.class.equals(forClass)) {
 			return ASSOCIATION_MAP;
 		}

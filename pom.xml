@@ -15,12 +15,12 @@
 
 	<properties>
 		<log4j.version>1.2.8</log4j.version>
-		<javolution.version>5.5.1</javolution.version>
+		<javolution.version>5.3.1</javolution.version>
 		<commons.version>1.0.0.CR1</commons.version>
 		<testng.version>6.2</testng.version>
 		<netty.version>4.1.105.Final</netty.version>
 		<compiler.plugin.version>3.8.1</compiler.plugin.version>
-		<compile.source>11</compile.source>
+		<compile.source>8</compile.source>
 
 	</properties>
 
@@ -215,17 +215,12 @@
 		</plugins>
 	</build>
 
-	<scm>
-		<connection>scm:git:https://github.com/RestComm/sctp.git</connection>
-		<developerConnection>scm:git:git@github.com:RestComm/sctp.git</developerConnection>
-		<url>https://github.com/RestComm/sctp</url>
-	</scm>
 	<!-- repositories -->
 	<repositories>
 		<repository>
-			<id>restcomm-public-repository-group</id>
-			<name>Restcomm Public Maven Repository Group</name>
-			<url>https://oss.sonatype.org/content/groups/public/</url>
+			<id>maven-repo</id>
+			<name>Maven Repository Group</name>
+			<url>https://repo.maven.apache.org/maven2/</url>
 			<layout>default</layout>
 			<releases>
 				<enabled>true</enabled>
@@ -237,9 +232,9 @@
 			</snapshots>
 		</repository>
 		<repository>
-			<id>jboss-public-repository-group</id>
-			<name>JBoss Public Maven Repository Group</name>
-			<url>http://repository.jboss.org/nexus/content/groups/public/</url>
+			<id>mvn-repo</id>
+			<name>MVN REPO</name>
+			<url>https://mvnrepository.com/</url>
 			<layout>default</layout>
 			<releases>
 				<enabled>true</enabled>
@@ -290,17 +285,6 @@
 				<enabled>true</enabled>
 				<updatePolicy>never</updatePolicy>
 			</snapshots>
-		</repository>
-		<repository>
-			<id>backup.repository.jboss.org</id>
-			<name>JBoss Repository Backup</name>
-			<url>http://anonsvn.jboss.org/repos/repository.jboss.org/maven2/</url>
-			<snapshots>
-				<enabled>true</enabled>
-			</snapshots>
-			<releases>
-				<enabled>true</enabled>
-			</releases>
 		</repository>
 	</repositories>
 </project>
