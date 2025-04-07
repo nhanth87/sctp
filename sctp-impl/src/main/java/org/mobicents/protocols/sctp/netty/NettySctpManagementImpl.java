@@ -20,7 +20,8 @@
 package org.mobicents.protocols.sctp.netty;
 
 import io.netty.channel.EventLoopGroup;
-import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.channel.epoll.EpollEventLoop;
+import io.netty.channel.epoll.EpollEventLoopGroup;
 import io.netty.util.concurrent.DefaultThreadFactory;
 
 import java.io.File;
@@ -29,11 +30,7 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 import javolution.text.TextBuilder;
 import javolution.util.FastList;
@@ -122,7 +119,7 @@ public class NettySctpManagementImpl implements Management {
 
     private EventLoopGroup bossGroup;
     private EventLoopGroup workerGroup;
-    private ScheduledExecutorService clientExecutor;
+    private EventLoopGroup clientExecutor;
 
     // SctpStandardSocketOptions
 
@@ -233,8 +230,12 @@ public class NettySctpManagementImpl implements Management {
         return workerGroup;
     }
 
-    protected ScheduledExecutorService getClientExecutor() {
-        return clientExecutor;
+    protected EpollEventLoopGroup getClientExecutor() {
+        if (clientExecutor instanceof EpollEventLoopGroup) {
+            return (EpollEventLoopGroup) clientExecutor;
+        } else {
+            return null;
+        }
     }
 
     /*
@@ -342,13 +343,10 @@ public class NettySctpManagementImpl implements Management {
 
             logger.info(String.format("SCTP configuration file path %s", persistFile.toString()));
 
-            this.bossGroup = new NioEventLoopGroup(this.getBossGroupThreadCount(), new DefaultThreadFactory("Sctp-BossGroup-" + this.name));
-            this.workerGroup = new NioEventLoopGroup(this.getWorkerGroupThreadCount(), new DefaultThreadFactory("Sctp-WorkerGroup-" + this.name));
-            this.clientExecutor = new ScheduledThreadPoolExecutor(1, new DefaultThreadFactory("Sctp-ClientExecutorGroup-"
+            this.bossGroup = new EpollEventLoopGroup(this.getBossGroupThreadCount(), new DefaultThreadFactory("Sctp-BossGroup-" + this.name));
+            this.workerGroup = new EpollEventLoopGroup(this.getWorkerGroupThreadCount(), new DefaultThreadFactory("Sctp-WorkerGroup-" + this.name));
+            this.clientExecutor = new EpollEventLoopGroup(1, new DefaultThreadFactory("Sctp-ClientExecutorGroup-"
                     + this.name));
-
-            // this.nettyClientOpsThread = new NettyClientOpsThread(this);
-            // (new Thread(this.nettyClientOpsThread )).start();
 
             try {
                 this.load();
@@ -437,7 +435,11 @@ public class NettySctpManagementImpl implements Management {
         // TODO - make a general shutdown and waiting for it instead of "waiting till stopping associations" 
         this.bossGroup.shutdownGracefully();
         this.workerGroup.shutdownGracefully();
-        this.clientExecutor.shutdown();
+
+        if (!this.clientExecutor.awaitTermination(5L, TimeUnit.SECONDS)) {
+            logger.info("SCTP service shutdown immediately");
+            this.clientExecutor.shutdownGracefully();
+        }
        
 
         // TODO Should servers be also checked for shutdown?
@@ -478,24 +480,20 @@ public class NettySctpManagementImpl implements Management {
             }
 
             // Remove all associations
-            ArrayList<String> lst = new ArrayList<String>();
-            for (FastMap.Entry<String, Association> n = this.associations.head(), end = this.associations.tail(); (n = n
-                    .getNext()) != end;) {
-                lst.add(n.getKey());
-            }
-            for (String n : lst) {
-                this.stopAssociation(n);
-                this.removeAssociation(n);
+            for (FastMap.Entry<String, Association> n = this.associations.head(),
+                                                    end = this.associations.tail();
+                                                    (n = n.getNext()) != end;) {
+                String assocName = n.getKey();
+                this.stopAssociation(assocName);
+                this.removeAssociation(assocName);
+
             }
 
             // Remove all servers
-            lst.clear();
             for (FastList.Node<Server> n = this.servers.head(), end = this.servers.tail(); (n = n.getNext()) != end;) {
-                lst.add(n.getValue().getName());
-            }
-            for (String n : lst) {
-                this.stopServer(n);
-                this.removeServer(n);
+                String serverName = n.getValue().getName();
+                this.stopServer(serverName);
+                this.removeServer(serverName);
             }
 
             // We store the cleared state
@@ -735,8 +733,8 @@ public class NettySctpManagementImpl implements Management {
      * @see org.mobicents.protocols.api.Management#getServers()
      */
     @Override
-    public List<Server> getServers() {
-        return servers.unmodifiable();
+    public FastList<Server> getServers() {
+        return servers;
     }
 
     /*
@@ -1024,8 +1022,8 @@ public class NettySctpManagementImpl implements Management {
      * @see org.mobicents.protocols.api.Management#getAssociations()
      */
     @Override
-    public Map<String, Association> getAssociations() {
-        Map<String, Association> routeTmp = new HashMap<String, Association>();
+    public FastMap<String, Association> getAssociations() {
+        FastMap<String, Association> routeTmp = new FastMap<>();
         routeTmp.putAll(this.associations);
         return routeTmp;
     }

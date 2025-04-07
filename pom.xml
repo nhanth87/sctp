@@ -9,8 +9,8 @@
 
 	<groupId>org.mobicents.protocols.sctp</groupId>
 	<artifactId>sctp-parent</artifactId>
-	<version>2.0.2-SNAPSHOT</version>
-	<name>Restcomm :: SCTP :: Parent :: ${pom.artifactId}</name>
+	<version>2.0.3-SNAPSHOT</version>
+	<name>Restcomm :: SCTP :: Parent :: ${project.artifactId}</name>
 	<packaging>pom</packaging>
 
 	<properties>
@@ -46,6 +46,17 @@
 				<artifactId>junit</artifactId>
 				<version>${junit.version}</version>
 				<scope>provided</scope>
+			</dependency>
+			<dependency>
+				<groupId>io.netty</groupId>
+				<artifactId>netty-transport-native-epoll</artifactId>
+				<version>4.1.105.Final</version>
+				<classifier>linux-x86_64</classifier>
+			</dependency>
+			<dependency>
+				<groupId>net.openhft</groupId>
+				<artifactId>chronicle-queue</artifactId>
+				<version>5.24ea36</version>
 			</dependency>
 		</dependencies>
 	</dependencyManagement>

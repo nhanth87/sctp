@@ -23,10 +23,9 @@ package org.mobicents.protocols.sctp.netty;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
-import io.netty.channel.Channel;
-import io.netty.channel.ChannelFuture;
-import io.netty.channel.ChannelOption;
-import io.netty.channel.EventLoopGroup;
+import io.netty.channel.*;
+import io.netty.channel.epoll.EpollEventLoop;
+import io.netty.channel.epoll.EpollEventLoopGroup;
 import io.netty.channel.sctp.SctpChannel;
 import io.netty.channel.sctp.SctpChannelOption;
 import io.netty.channel.sctp.SctpMessage;
@@ -589,8 +588,9 @@ public class NettyAssociationImpl implements Association {
         }
 
 //        final ScheduledExecutorService loop = this.management.getBossGroup().next();
-        final ScheduledExecutorService loop = this.management.getClientExecutor();
-        loop.schedule(new Runnable() {
+        final EpollEventLoopGroup loop = this.management.getClientExecutor();
+        final EventLoop eventLoop = loop.next();
+        eventLoop.schedule(new Runnable() {
             @Override
             public void run() {
                 connect();

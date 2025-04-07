@@ -21,11 +21,7 @@
 package org.mobicents.protocols.sctp.netty;
 
 import io.netty.buffer.ByteBuf;
-import io.netty.channel.Channel;
-import io.netty.channel.ChannelFuture;
-import io.netty.channel.ChannelFutureListener;
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelInboundHandlerAdapter;
+import io.netty.channel.*;
 import io.netty.channel.sctp.SctpMessage;
 
 import org.apache.log4j.Logger;
@@ -42,7 +38,7 @@ import com.sun.nio.sctp.ShutdownNotification;
  * @author <a href="mailto:amit.bhayani@telestax.com">Amit Bhayani</a>
  * 
  */
-public class NettySctpChannelInboundHandlerAdapter extends ChannelInboundHandlerAdapter {
+public class NettySctpChannelInboundHandlerAdapter extends SimpleChannelInboundHandler<SctpMessage> {
 
     Logger logger = Logger.getLogger(NettySctpChannelInboundHandlerAdapter.class);
 
@@ -175,16 +171,15 @@ public class NettySctpChannelInboundHandlerAdapter extends ChannelInboundHandler
     }
 
     @Override
-    public void channelRead(ChannelHandlerContext ctx, Object msg) {
+    protected void channelRead0(ChannelHandlerContext channelHandlerContext, SctpMessage sctpMessage) throws Exception {
         // try {
         PayloadData payload;
         if (this.association.getIpChannelType() == IpChannelType.SCTP) {
-            SctpMessage sctpMessage = (SctpMessage) msg;
             ByteBuf byteBuf = sctpMessage.content();
             payload = new PayloadData(byteBuf.readableBytes(), byteBuf, sctpMessage.isComplete(), sctpMessage.isUnordered(),
                     sctpMessage.protocolIdentifier(), sctpMessage.streamIdentifier());
         } else {
-            ByteBuf byteBuf = (ByteBuf) msg;
+            ByteBuf byteBuf = sctpMessage.content();
             payload = new PayloadData(byteBuf.readableBytes(), byteBuf, true, false, 0, 0);
         }
 
@@ -193,9 +188,7 @@ public class NettySctpChannelInboundHandlerAdapter extends ChannelInboundHandler
         }
 
         this.association.read(payload);
-        // } finally {
-        // ReferenceCountUtil.release(msg);
-        // }
+
     }
 
     protected void writeAndFlush(Object message) {
