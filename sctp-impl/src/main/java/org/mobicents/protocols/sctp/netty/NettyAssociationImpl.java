@@ -24,7 +24,6 @@ import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.channel.*;
-import io.netty.channel.epoll.EpollEventLoop;
 import io.netty.channel.epoll.EpollEventLoopGroup;
 import io.netty.channel.sctp.SctpChannel;
 import io.netty.channel.sctp.SctpChannelOption;
@@ -35,13 +34,19 @@ import io.netty.channel.socket.nio.NioSocketChannel;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.util.concurrent.ScheduledExecutorService;
+import java.security.spec.ECField;
 import java.util.concurrent.TimeUnit;
 
 import javolution.xml.XMLFormat;
 import javolution.xml.stream.XMLStreamException;
 
+import net.openhft.chronicle.queue.ExcerptAppender;
+import net.openhft.chronicle.queue.ExcerptTailer;
+import net.openhft.chronicle.wire.DocumentContext;
+import net.openhft.chronicle.wire.WireIn;
+import net.openhft.chronicle.wire.WireOut;
 import org.apache.log4j.Logger;
+
 import org.mobicents.protocols.api.Association;
 import org.mobicents.protocols.api.AssociationListener;
 import org.mobicents.protocols.api.AssociationType;
@@ -49,6 +54,10 @@ import org.mobicents.protocols.api.CongestionListener;
 import org.mobicents.protocols.api.IpChannelType;
 import org.mobicents.protocols.api.ManagementEventListener;
 import org.mobicents.protocols.api.PayloadData;
+
+import net.openhft.chronicle.queue.ChronicleQueue;
+
+import javax.swing.text.Document;
 
 /**
  * @author <a href="mailto:amit.bhayani@telestax.com">Amit Bhayani</a>
@@ -96,14 +105,66 @@ public class NettyAssociationImpl implements Association {
 
     private NettySctpChannelInboundHandlerAdapter channelHandler;
     protected int congLevel;
+    private ChronicleQueue toSS7Queue = null; //from sctp -> jss7
+    private ExcerptAppender toSs7QueueAppender = null;
+
+    private ChronicleQueue toSctpQueue = null; // from jss7 -> sctp
+    private ExcerptTailer toSctpTailer = null;
+    private ExcerptAppender toSctpAppender;
+
+    // Getter and Setter for queue
+    @Override
+    public ChronicleQueue getToSS7Queue() {
+        return this.toSS7Queue;
+    }
+    @Override
+    public void setToSS7Queue(ChronicleQueue toSS7Queue) {
+        this.toSS7Queue = toSS7Queue;
+    }
+
+    // Getter and Setter for appender
+    @Override
+    public ExcerptAppender getToSs7QueueAppender() {
+        return this.toSs7QueueAppender;
+    }
+    @Override
+    public void setToSs7QueueAppender(ExcerptAppender toSs7QueueAppender) {
+        this.toSs7QueueAppender = toSs7QueueAppender;
+    }
+    @Override
+    public ChronicleQueue getToSctpQueue() {
+        return this.toSctpQueue;
+    }
+
+    @Override
+    public void setToSctpQueue(ChronicleQueue toSctpQueue) {
+        this.toSctpQueue = toSS7Queue;
+    }
+
+    @Override
+    public final ExcerptTailer getToSctpTailer()
+    {
+        return this.toSctpTailer;
+    }
+
+    @Override
+    public ExcerptAppender getToSctpAppender() {
+        return this.toSctpAppender;
+    }
 
     public NettyAssociationImpl() {
         super();
+        this.toSS7Queue = ChronicleQueue.singleBuilder("readqueue-" + this.name).build();
+        this.toSctpQueue = ChronicleQueue.singleBuilder("writequeue-" + this.name).build();
+
+        this.toSs7QueueAppender = toSS7Queue.createAppender();
+        this.toSctpTailer = toSctpQueue.createTailer();
+        this.toSctpAppender = toSctpQueue.createAppender();
     }
 
     /**
      * Creating a CLIENT Association
-     * 
+     *
      * @param hostAddress
      * @param hostPort
      * @param peerAddress
@@ -129,7 +190,7 @@ public class NettyAssociationImpl implements Association {
 
     /**
      * Creating a SERVER Association
-     * 
+     *
      * @param peerAddress
      * @param peerPort
      * @param serverName
@@ -145,12 +206,11 @@ public class NettyAssociationImpl implements Association {
         this.ipChannelType = ipChannelType;
 
         this.type = AssociationType.SERVER;
-
     }
 
     /**
      * Creating an ANONYMOUS_SERVER Association
-     * 
+     *
      * @param peerAddress
      * @param peerPort
      * @param peerAddress
@@ -168,6 +228,7 @@ public class NettyAssociationImpl implements Association {
         this.server = server;
 
         this.type = AssociationType.ANONYMOUS_SERVER;
+        this.toSS7Queue = ChronicleQueue.singleBuilder("queue-" + this.name).build();
 
     }
 
@@ -355,15 +416,10 @@ public class NettyAssociationImpl implements Association {
             logger.debug(String.format("Tx : Ass=%s %s", this.getName(), payloadData));
         }
 
-        NettySctpChannelInboundHandlerAdapter handler = checkSocketIsOpen();
-
-        final ByteBuf byteBuf = payloadData.getByteBuf();
-        if (this.ipChannelType == IpChannelType.SCTP) {
-            SctpMessage sctpMessage = new SctpMessage(payloadData.getPayloadProtocolId(), payloadData.getStreamNumber(),
-                    payloadData.isUnordered(), byteBuf);
-            handler.writeAndFlush(sctpMessage);
-        } else {
-            handler.writeAndFlush(byteBuf);
+        try {
+            this.getToSctpAppender().writeDocument(payloadData);
+        } catch (Exception e) {
+            logger.warn("Can't write toSctpQueue");
         }
     }
 
@@ -524,17 +580,25 @@ public class NettyAssociationImpl implements Association {
             }
         }
 
-        NettySctpChannelInboundHandlerAdapter handler = this.channelHandler;
+        final NettySctpChannelInboundHandlerAdapter handler = this.channelHandler;
         if (handler != null) {
             handler.closeChannel();
         }
+
     }
 
-    protected void read(PayloadData payload) {
-        try {
-            this.associationListener.onPayload(this, payload);
+    public void read(PayloadData payload) {
+        try (DocumentContext dc = this.getToSs7QueueAppender().writingDocument()) {
+
+            //this.associationListener.onPayload(this, payload);
+            //using openhft to cache payload
+            WireOut wo = dc.wire();
+            payload.writeMarshallable(wo);
+
         } catch (Exception e) {
-            logger.error(String.format("Error while calling Listener for Association=%s.Payload=%s", this.name, payload), e);
+            logger.error(String.format("Error while write to queue %s Association=%s.Payload=%s",this.getToSctpQueue().file().getName(), this.name, payload), e);
+        } finally {
+            payload.releaseBuffer();
         }
     }
 
@@ -596,6 +660,36 @@ public class NettyAssociationImpl implements Association {
                 connect();
             }
         }, connectDelay, TimeUnit.MILLISECONDS);
+    }
+
+    private void scheduleSendMessage() {
+
+        while (!this.getToSctpQueue().isClosing()|| !this.getToSctpQueue().isClosed() || !this.started || !this.up) {
+        try {
+            NettySctpChannelInboundHandlerAdapter handler = checkSocketIsOpen();
+            DocumentContext dc = this.getToSctpTailer().readingDocument();
+            PayloadData pd = null;
+            if(dc.isPresent()) {
+                WireIn  wi = dc.wire();
+                pd.readMarshallable(wi);
+            }
+
+            if (pd != null) {
+                if (this.ipChannelType == IpChannelType.SCTP) {
+                    SctpMessage sctpMessage = new SctpMessage(pd.getPayloadProtocolId(), pd.getStreamNumber(),
+                            pd.isUnordered(), pd.getByteBuf());
+                    handler.writeAndFlush(sctpMessage);
+                } else {
+                    handler.writeAndFlush(pd.getByteBuf());
+                }
+            } else {
+                return;
+            }
+
+        }catch (Exception e) {
+            logger.error(e.getMessage());
+        }
+        }
     }
 
     protected void setChannelHandler(NettySctpChannelInboundHandlerAdapter channelHandler) {
@@ -740,4 +834,5 @@ public class NettyAssociationImpl implements Association {
             }
         }
     };
+
 }

@@ -20,7 +20,6 @@
 package org.mobicents.protocols.sctp.netty;
 
 import io.netty.channel.EventLoopGroup;
-import io.netty.channel.epoll.EpollEventLoop;
 import io.netty.channel.epoll.EpollEventLoopGroup;
 import io.netty.util.concurrent.DefaultThreadFactory;
 
@@ -29,7 +28,6 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.concurrent.TimeUnit;
 
 import javolution.text.TextBuilder;
@@ -343,8 +341,8 @@ public class NettySctpManagementImpl implements Management {
 
             logger.info(String.format("SCTP configuration file path %s", persistFile.toString()));
 
-            this.bossGroup = new EpollEventLoopGroup(this.getBossGroupThreadCount(), new DefaultThreadFactory("Sctp-BossGroup-" + this.name));
-            this.workerGroup = new EpollEventLoopGroup(this.getWorkerGroupThreadCount(), new DefaultThreadFactory("Sctp-WorkerGroup-" + this.name));
+            this.bossGroup = new EpollEventLoopGroup(1, new DefaultThreadFactory("Sctp-BossGroup-" + this.name));
+            this.workerGroup = new EpollEventLoopGroup(1, new DefaultThreadFactory("Sctp-WorkerGroup-" + this.name));
             this.clientExecutor = new EpollEventLoopGroup(1, new DefaultThreadFactory("Sctp-ClientExecutorGroup-"
                     + this.name));
 

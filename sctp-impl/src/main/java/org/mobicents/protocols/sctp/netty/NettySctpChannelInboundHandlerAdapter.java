@@ -187,6 +187,7 @@ public class NettySctpChannelInboundHandlerAdapter extends SimpleChannelInboundH
             logger.debug(String.format("Rx : Ass=%s %s", this.association.getName(), payload));
         }
 
+        //TODO: add openhft
         this.association.read(payload);
 
     }
@@ -233,7 +234,7 @@ public class NettySctpChannelInboundHandlerAdapter extends SimpleChannelInboundH
 
     }
 
-    protected void closeChannel() {
+    final public void closeChannel() {
         Channel ch = this.channel;
         if (ch != null) {
             try {

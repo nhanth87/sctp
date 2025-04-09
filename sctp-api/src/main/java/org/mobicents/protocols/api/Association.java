@@ -23,6 +23,9 @@
 package org.mobicents.protocols.api;
 
 import io.netty.buffer.ByteBufAllocator;
+import net.openhft.chronicle.queue.ChronicleQueue;
+import net.openhft.chronicle.queue.ExcerptAppender;
+import net.openhft.chronicle.queue.ExcerptTailer;
 
 /**
  * <p>
@@ -185,5 +188,22 @@ public interface Association {
 	 * @throws Exception
 	 */
 	public void stopAnonymousAssociation() throws Exception;
+
+	/* Chronical queue */
+	public ChronicleQueue getToSS7Queue();
+
+	public void setToSS7Queue(ChronicleQueue toSS7Queue);
+
+	// Getter and Setter for appender
+	public ExcerptAppender getToSs7QueueAppender();
+
+	public void setToSs7QueueAppender(ExcerptAppender toSs7QueueAppender);
+
+	public ChronicleQueue getToSctpQueue();
+	public void setToSctpQueue(ChronicleQueue toSctpQueue);
+
+	public ExcerptTailer getToSctpTailer();
+
+	public ExcerptAppender getToSctpAppender();
 
 }

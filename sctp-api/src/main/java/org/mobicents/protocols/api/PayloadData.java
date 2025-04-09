@@ -24,7 +24,11 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.util.ReferenceCountUtil;
 
-import org.mobicents.commons.HexTools;
+import net.openhft.chronicle.wire.SelfDescribingMarshallable;
+
+import java.io.Serializable;
+import net.openhft.chronicle.wire.WireIn;
+import net.openhft.chronicle.wire.WireOut;
 
 /**
  * The actual pay load data received or to be sent from/to underlying socket
@@ -32,14 +36,15 @@ import org.mobicents.commons.HexTools;
  * @author amit bhayani
  *
  */
-public class PayloadData {
+public class PayloadData extends SelfDescribingMarshallable implements Serializable {
+    private static final long serialVersionUID = 81187L;
 
-    private final int dataLength;
-    private final ByteBuf byteBuf;
-    private final boolean complete;
-    private final boolean unordered;
-    private final int payloadProtocolId;
-    private final int streamNumber;
+    private int dataLength;
+    private ByteBuf byteBuf;
+    private boolean complete;
+    private boolean unordered;
+    private int payloadProtocolId;
+    private int streamNumber;
     private int retryCount = 0;
 
     /**
@@ -170,6 +175,31 @@ public class PayloadData {
         return this;
     }
 
+    @Override
+    public void writeMarshallable(WireOut wire) {
+        wire.write("dataLength").int32(dataLength);
+        wire.write("data").bytes(getData());
+        wire.write("complete").bool(complete);
+        wire.write("unordered").bool(unordered);
+        wire.write("payloadProtocolId").int32(payloadProtocolId);
+        wire.write("streamNumber").int32(streamNumber);
+        wire.write("retryCount").int32(retryCount);
+    }
+
+
+    @Override
+    public void readMarshallable(WireIn wire) {
+       this. dataLength = wire.read("dataLength").int32();
+        this. byteBuf = Unpooled.wrappedBuffer(wire.read("data").bytes());
+        this. complete = wire.read("complete").bool();
+        this. unordered = wire.read("unordered").bool();
+        this. payloadProtocolId = wire.read("payloadProtocolId").int32();
+        this. streamNumber = wire.read("streamNumber").int32();
+        this. retryCount = wire.read("retryCount").int32();
+
+        this.retryCount = retryCount;
+    }
+
     /*
      * (non-Javadoc)
      *
@@ -177,13 +207,12 @@ public class PayloadData {
      */
     @Override
     public String toString() {
-        byte[] array = new byte[byteBuf.readableBytes()];
-        byteBuf.getBytes(0, array);
-
-        StringBuffer sb = new StringBuffer();
+        StringBuilder sb = new StringBuilder();
         sb.append("PayloadData [dataLength=").append(dataLength).append(", complete=").append(complete).append(", unordered=")
-            .append(unordered).append(", payloadProtocolId=").append(payloadProtocolId).append(", streamNumber=")
-            .append(streamNumber).append(", data=\n").append(HexTools.dump(array, 0)).append("]");
+                .append(unordered).append(", payloadProtocolId=").append(payloadProtocolId).append(", streamNumber=")
+                .append(streamNumber).append(", data=\n").append(byteBuf.readableBytes()).append("]");
+
         return sb.toString();
     }
+
 }
