@@ -28,19 +28,13 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 
-import javolution.text.TextBuilder;
-import javolution.util.FastList;
-import javolution.util.FastMap;
-import javolution.xml.XMLObjectReader;
-import javolution.xml.XMLObjectWriter;
-import javolution.xml.stream.XMLStreamException;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.Map;
 
 import org.apache.log4j.Logger;
 import org.mobicents.protocols.api.Association;
@@ -54,6 +48,8 @@ import org.mobicents.protocols.api.ServerListener;
 
 import com.sun.nio.sctp.SctpStandardSocketOptions;
 import com.sun.nio.sctp.SctpStandardSocketOptions.InitMaxStreams;
+
+import com.thoughtworks.xstream.XStream;
 
 /**
  * @author <a href="mailto:amit.bhayani@telestax.com">Amit Bhayani</a>
@@ -93,11 +89,9 @@ public class NettySctpManagementImpl implements Management {
 
     static final int DEFAULT_IO_THREADS = Runtime.getRuntime().availableProcessors() * 2;
 
-    private final TextBuilder persistFile = TextBuilder.newInstance();
+    private final StringBuilder persistFile = new StringBuilder();
 
-    protected static final NettySctpXMLBinding binding = new NettySctpXMLBinding();
     protected static final String TAB_INDENT = "\t";
-    private static final String CLASS_ATTRIBUTE = "type";
 
     private final String name;
 
@@ -114,9 +108,9 @@ public class NettySctpManagementImpl implements Management {
 
     private ServerListener serverListener = null;
 
-    private FastList<ManagementEventListener> managementEventListeners = new FastList<ManagementEventListener>();
-    private FastList<CongestionListener> congestionListeners = new FastList<CongestionListener>();
-    protected FastList<Server> servers = new FastList<Server>();
+    private CopyOnWriteArrayList<ManagementEventListener> managementEventListeners = new CopyOnWriteArrayList<ManagementEventListener>();
+    private CopyOnWriteArrayList<CongestionListener> congestionListeners = new CopyOnWriteArrayList<CongestionListener>();
+    protected CopyOnWriteArrayList<Server> servers = new CopyOnWriteArrayList<Server>();
     protected NettyAssociationMap<String, Association> associations = new NettyAssociationMap<String, Association>();
     private volatile boolean started = false;
 
@@ -169,10 +163,6 @@ public class NettySctpManagementImpl implements Management {
 	 */
     public NettySctpManagementImpl(String name) throws IOException {
         this.name = name;
-        binding.setClassAttribute(CLASS_ATTRIBUTE);
-        binding.setAlias(NettyServerImpl.class, "server");
-        binding.setAlias(NettyAssociationImpl.class, "association");
-        binding.setAlias(String.class, "string");
     }
 
     /*
@@ -249,10 +239,7 @@ public class NettySctpManagementImpl implements Management {
             if (this.managementEventListeners.contains(listener))
                 return;
 
-            FastList<ManagementEventListener> newManagementEventListeners = new FastList<ManagementEventListener>();
-            newManagementEventListeners.addAll(this.managementEventListeners);
-            newManagementEventListeners.add(listener);
-            this.managementEventListeners = newManagementEventListeners;
+            this.managementEventListeners.add(listener);
         }
     }
 
@@ -268,10 +255,7 @@ public class NettySctpManagementImpl implements Management {
             if (!this.managementEventListeners.contains(listener))
                 return;
 
-            FastList<ManagementEventListener> newManagementEventListeners = new FastList<ManagementEventListener>();
-            newManagementEventListeners.addAll(this.managementEventListeners);
-            newManagementEventListeners.remove(listener);
-            this.managementEventListeners = newManagementEventListeners;
+            this.managementEventListeners.remove(listener);
         }
     }
 
@@ -281,10 +265,7 @@ public class NettySctpManagementImpl implements Management {
             if (this.congestionListeners.contains(listener))
                 return;
 
-            FastList<CongestionListener> newCongestionListeners = new FastList<CongestionListener>();
-            newCongestionListeners.addAll(this.congestionListeners);
-            newCongestionListeners.add(listener);
-            this.congestionListeners = newCongestionListeners;
+            this.congestionListeners.add(listener);
         }
     }
 
@@ -294,10 +275,7 @@ public class NettySctpManagementImpl implements Management {
             if (!this.congestionListeners.contains(listener))
                 return;
 
-            FastList<CongestionListener> newCongestionListeners = new FastList<CongestionListener>();
-            newCongestionListeners.addAll(this.congestionListeners);
-            newCongestionListeners.remove(listener);
-            this.congestionListeners = newCongestionListeners;
+            this.congestionListeners.remove(listener);
         }
     }
 
@@ -330,7 +308,7 @@ public class NettySctpManagementImpl implements Management {
         }
 
         synchronized (this) {
-            this.persistFile.clear();
+            this.persistFile.setLength(0);
 
             if (persistDir != null) {
                 this.persistFile.append(persistDir).append(File.separator).append(this.name).append("_")
@@ -398,17 +376,13 @@ public class NettySctpManagementImpl implements Management {
         this.store();
 
         // Stop all associations
-        FastMap<String, Association> associationsTemp = this.associations;
-        for (FastMap.Entry<String, Association> n = associationsTemp.head(), end = associationsTemp.tail(); (n = n.getNext()) != end;) {
-            Association associationTemp = n.getValue();
+        for (Association associationTemp : this.associations.values()) {
             if (associationTemp.isStarted()) {
                 ((NettyAssociationImpl) associationTemp).stop();
             }
         }
 
-        FastList<Server> tempServers = servers;
-        for (FastList.Node<Server> n = tempServers.head(), end = tempServers.tail(); (n = n.getNext()) != end;) {
-            Server serverTemp = n.getValue();
+        for (Server serverTemp : servers) {
             if (serverTemp.isStarted()) {
                 try {
                     ((NettyServerImpl) serverTemp).stop();
@@ -421,9 +395,7 @@ public class NettySctpManagementImpl implements Management {
         // waiting till stopping associations
         for (int i1 = 0; i1 < 20; i1++) {
             boolean assConnected = false;
-            for (FastMap.Entry<String, Association> n = this.associations.head(), end = this.associations.tail(); (n = n
-                    .getNext()) != end;) {
-                Association associationTemp = n.getValue();
+            for (Association associationTemp : this.associations.values()) {
                 if (associationTemp.isConnected()) {
                     assConnected = true;
                     break;
@@ -478,24 +450,15 @@ public class NettySctpManagementImpl implements Management {
             }
 
             // Remove all associations
-            ArrayList<String> lst = new ArrayList<String>();
-            for (FastMap.Entry<String, Association> n = this.associations.head(), end = this.associations.tail(); (n = n
-                    .getNext()) != end;) {
-                lst.add(n.getKey());
-            }
-            for (String n : lst) {
+            for (String n : this.associations.keySet()) {
                 this.stopAssociation(n);
                 this.removeAssociation(n);
             }
 
             // Remove all servers
-            lst.clear();
-            for (FastList.Node<Server> n = this.servers.head(), end = this.servers.tail(); (n = n.getNext()) != end;) {
-                lst.add(n.getValue().getName());
-            }
-            for (String n : lst) {
-                this.stopServer(n);
-                this.removeServer(n);
+            for (Server server : this.servers) {
+                this.stopServer(server.getName());
+                this.removeServer(server.getName());
             }
 
             // We store the cleared state
@@ -539,8 +502,7 @@ public class NettySctpManagementImpl implements Management {
         }
 
         synchronized (this) {
-            for (FastList.Node<Server> n = this.servers.head(), end = this.servers.tail(); (n = n.getNext()) != end;) {
-                Server serverTemp = n.getValue();
+            for (Server serverTemp : this.servers) {
                 if (serverName.equals(serverTemp.getName())) {
                     throw new Exception(String.format("Server name=%s already exists", serverName));
                 }
@@ -555,10 +517,7 @@ public class NettySctpManagementImpl implements Management {
                     acceptAnonymousConnections, maxConcurrentConnectionsCount, extraHostAddresses);
             server.setManagement(this);
 
-            FastList<Server> newServers = new FastList<Server>();
-            newServers.addAll(this.servers);
-            newServers.add(server);
-            this.servers = newServers;
+            this.servers.add(server);
             // this.servers.add(server);
 
             this.store();
@@ -626,19 +585,19 @@ public class NettySctpManagementImpl implements Management {
 
         synchronized (this) {
             Server removeServer = null;
-            for (FastList.Node<Server> n = this.servers.head(), end = this.servers.tail(); (n = n.getNext()) != end;) {
-                NettyServerImpl serverTemp = (NettyServerImpl) n.getValue();
+            for (Server serverTemp : this.servers) {
+                NettyServerImpl serverTempImpl = (NettyServerImpl) serverTemp;
 
-                if (serverName.equals(serverTemp.getName())) {
-                    if (serverTemp.isStarted()) {
+                if (serverName.equals(serverTempImpl.getName())) {
+                    if (serverTempImpl.isStarted()) {
                         throw new Exception(String.format("Server=%s is started. Stop the server before removing", serverName));
                     }
 
-                    if (serverTemp.anonymAssociations.size() != 0 || serverTemp.associations.size() != 0) {
+                    if (serverTempImpl.anonymAssociations.size() != 0 || serverTempImpl.associations.size() != 0) {
                         throw new Exception(String.format(
                                 "Server=%s has Associations. Remove all those Associations before removing Server", serverName));
                     }
-                    removeServer = serverTemp;
+                    removeServer = serverTempImpl;
                     break;
                 }
             }
@@ -647,10 +606,7 @@ public class NettySctpManagementImpl implements Management {
                 throw new Exception(String.format("No Server found with name=%s", serverName));
             }
 
-            FastList<Server> newServers = new FastList<Server>();
-            newServers.addAll(this.servers);
-            newServers.remove(removeServer);
-            this.servers = newServers;
+            this.servers.remove(removeServer);
             // this.servers.remove(removeServer);
 
             this.store();
@@ -681,10 +637,7 @@ public class NettySctpManagementImpl implements Management {
             throw new Exception("Server name cannot be null");
         }
 
-        FastList<Server> tempServers = servers;
-        for (FastList.Node<Server> n = tempServers.head(), end = tempServers.tail(); (n = n.getNext()) != end;) {
-            Server serverTemp = n.getValue();
-
+        for (Server serverTemp : servers) {
             if (serverName.equals(serverTemp.getName())) {
                 if (serverTemp.isStarted()) {
                     throw new Exception(String.format("Server=%s is already started", serverName));
@@ -714,10 +667,7 @@ public class NettySctpManagementImpl implements Management {
             throw new Exception("Server name cannot be null");
         }
 
-        FastList<Server> tempServers = servers;
-        for (FastList.Node<Server> n = tempServers.head(), end = tempServers.tail(); (n = n.getNext()) != end;) {
-            Server serverTemp = n.getValue();
-
+        for (Server serverTemp : servers) {
             if (serverName.equals(serverTemp.getName())) {
                 ((NettyServerImpl) serverTemp).stop();
                 this.store();
@@ -735,8 +685,8 @@ public class NettySctpManagementImpl implements Management {
      * @see org.mobicents.protocols.api.Management#getServers()
      */
     @Override
-    public List<Server> getServers() {
-        return servers.unmodifiable();
+    public CopyOnWriteArrayList<Server> getServers() {
+        return servers;
     }
 
     /*
@@ -787,8 +737,7 @@ public class NettySctpManagementImpl implements Management {
 
             Server server = null;
 
-            for (FastList.Node<Server> n = this.servers.head(), end = this.servers.tail(); (n = n.getNext()) != end;) {
-                Server serverTemp = n.getValue();
+            for (Server serverTemp : this.servers) {
                 if (serverTemp.getName().equals(serverName)) {
                     server = serverTemp;
                 }
@@ -798,10 +747,7 @@ public class NettySctpManagementImpl implements Management {
                 throw new Exception(String.format("No Server found for name=%s", serverName));
             }
 
-            for (FastMap.Entry<String, Association> n = this.associations.head(), end = this.associations.tail(); (n = n
-                    .getNext()) != end;) {
-                Association associationTemp = n.getValue();
-                
+            for (Association associationTemp : this.associations.values()) {
                 if (associationTemp.getServerName().equals(server.getName()) && peerAddress.equals(associationTemp.getPeerAddress()) && associationTemp.getPeerPort() == peerPort) {
                     throw new Exception(String.format("Already has association=%s with same peer address=%s and port=%d",
                             associationTemp.getName(), peerAddress, peerPort));
@@ -815,16 +761,9 @@ public class NettySctpManagementImpl implements Management {
                     ipChannelType);
             association.setManagement(this);
 
-            NettyAssociationMap<String, Association> newAssociations = new NettyAssociationMap<String, Association>();
-            newAssociations.putAll(this.associations);
-            newAssociations.put(assocName, association);
-            this.associations = newAssociations;
-            // this.associations.put(assocName, association);
+            this.associations.put(assocName, association);
 
-            FastList<String> newAssociations2 = new FastList<String>();
-            newAssociations2.addAll(((NettyServerImpl) server).associations);
-            newAssociations2.add(assocName);
-            ((NettyServerImpl) server).associations = newAssociations2;
+            ((NettyServerImpl) server).associations.add(assocName);
             // ((ServerImpl) server).associations.add(assocName);
 
             this.store();
@@ -893,10 +832,7 @@ public class NettySctpManagementImpl implements Management {
         }
 
         synchronized (this) {
-            for (FastMap.Entry<String, Association> n = this.associations.head(), end = this.associations.tail(); (n = n
-                    .getNext()) != end;) {
-                Association associationTemp = n.getValue();
-
+            for (Association associationTemp : this.associations.values()) {
                 if (assocName.equals(associationTemp.getName())) {
                     throw new Exception(String.format("Already has association=%s", associationTemp.getName()));
                 }
@@ -917,10 +853,7 @@ public class NettySctpManagementImpl implements Management {
                     assocName, ipChannelType, extraHostAddresses);
             association.setManagement(this);
 
-            NettyAssociationMap<String, Association> newAssociations = new NettyAssociationMap<String, Association>();
-            newAssociations.putAll(this.associations);
-            newAssociations.put(assocName, association);
-            this.associations = newAssociations;
+            this.associations.put(assocName, association);
             // associations.put(assocName, association);
 
             this.store();
@@ -968,20 +901,12 @@ public class NettySctpManagementImpl implements Management {
                 throw new Exception(String.format("Association name=%s is started. Stop before removing", assocName));
             }
 
-            NettyAssociationMap<String, Association> newAssociations = new NettyAssociationMap<String, Association>();
-            newAssociations.putAll(this.associations);
-            newAssociations.remove(assocName);
-            this.associations = newAssociations;
-            // this.associations.remove(assocName);
+            this.associations.remove(assocName);
 
             if (((NettyAssociationImpl) association).getAssociationType() == AssociationType.SERVER) {
-                for (FastList.Node<Server> n = this.servers.head(), end = this.servers.tail(); (n = n.getNext()) != end;) {
-                    Server serverTemp = n.getValue();
+                for (Server serverTemp : this.servers) {
                     if (serverTemp.getName().equals(association.getServerName())) {
-                        FastList<String> newAssociations2 = new FastList<String>();
-                        newAssociations2.addAll(((NettyServerImpl) serverTemp).associations);
-                        newAssociations2.remove(assocName);
-                        ((NettyServerImpl) serverTemp).associations = newAssociations2;
+                        ((NettyServerImpl) serverTemp).associations.remove(assocName);
                         break;
                     }
                 }
@@ -1025,9 +950,7 @@ public class NettySctpManagementImpl implements Management {
      */
     @Override
     public Map<String, Association> getAssociations() {
-        Map<String, Association> routeTmp = new HashMap<String, Association>();
-        routeTmp.putAll(this.associations);
-        return routeTmp;
+        return this.associations;
     }
 
     /*
@@ -1345,50 +1268,49 @@ public class NettySctpManagementImpl implements Management {
         this.optionSoLinger = optionSoLinger;
     }
 
-    protected FastList<ManagementEventListener> getManagementEventListeners() {
+    protected CopyOnWriteArrayList<ManagementEventListener> getManagementEventListeners() {
         return managementEventListeners;
     }
 
-    protected FastList<CongestionListener> getCongestionListeners() {
+    protected CopyOnWriteArrayList<CongestionListener> getCongestionListeners() {
         return congestionListeners;
     }
 
     @SuppressWarnings("unchecked")
     protected void load() throws FileNotFoundException {
-        XMLObjectReader reader = null;
-        try {
-            reader = XMLObjectReader.newInstance(new FileInputStream(persistFile.toString()));
-            reader.setBinding(binding);
-            load(reader);
+        XStream xstream = NettySctpXMLBinding.getXStream();
+        
+        try (InputStreamReader reader = new InputStreamReader(new FileInputStream(persistFile.toString()))) {
+            // Read the root element to get individual properties
+            java.util.Map<String, Object> rootMap = (java.util.Map<String, Object>) xstream.fromXML(reader);
             
-
-        } catch (XMLStreamException ex) {
-            // this.logger.info(
-            // "Error while re-creating Linksets from persisted file", ex);
+            if (rootMap != null) {
+                loadFromMap(rootMap);
+            }
+        } catch (Exception ex) {
+            logger.error("Error while loading SCTP configuration from persisted file", ex);
         }
     }
     
-    protected void load(XMLObjectReader reader) throws XMLStreamException
-    {
-    	try {
-            Integer vali = reader.read(CONNECT_DELAY_PROP, Integer.class);
+    @SuppressWarnings("unchecked")
+    protected void loadFromMap(java.util.Map<String, Object> rootMap) {
+        try {
+            Integer vali = (Integer) rootMap.get(CONNECT_DELAY_PROP);
             if (vali != null)
                 this.connectDelay = vali;
-            // this.workerThreads = reader.read(WORKER_THREADS_PROP, Integer.class);
-            // this.singleThread = reader.read(SINGLE_THREAD_PROP, Boolean.class);
-            vali = reader.read(WORKER_THREADS_PROP, Integer.class);
-            Boolean valb = reader.read(SINGLE_THREAD_PROP, Boolean.class);
+            vali = (Integer) rootMap.get(WORKER_THREADS_PROP);
+            Boolean valb = (Boolean) rootMap.get(SINGLE_THREAD_PROP);
         } catch (java.lang.NullPointerException npe) {
             // ignore.
             // For backward compatibility we can ignore if these values are not defined
         }
 
-        Double valTH1 = reader.read(CONG_CONTROL_DELAY_THRESHOLD_1, Double.class);
-        Double valTH2 = reader.read(CONG_CONTROL_DELAY_THRESHOLD_2, Double.class);
-        Double valTH3 = reader.read(CONG_CONTROL_DELAY_THRESHOLD_3, Double.class);
-        Double valTB1 = reader.read(CONG_CONTROL_BACK_TO_NORMAL_DELAY_THRESHOLD_1, Double.class);
-        Double valTB2 = reader.read(CONG_CONTROL_BACK_TO_NORMAL_DELAY_THRESHOLD_2, Double.class);
-        Double valTB3 = reader.read(CONG_CONTROL_BACK_TO_NORMAL_DELAY_THRESHOLD_3, Double.class);
+        Double valTH1 = (Double) rootMap.get(CONG_CONTROL_DELAY_THRESHOLD_1);
+        Double valTH2 = (Double) rootMap.get(CONG_CONTROL_DELAY_THRESHOLD_2);
+        Double valTH3 = (Double) rootMap.get(CONG_CONTROL_DELAY_THRESHOLD_3);
+        Double valTB1 = (Double) rootMap.get(CONG_CONTROL_BACK_TO_NORMAL_DELAY_THRESHOLD_1);
+        Double valTB2 = (Double) rootMap.get(CONG_CONTROL_BACK_TO_NORMAL_DELAY_THRESHOLD_2);
+        Double valTB3 = (Double) rootMap.get(CONG_CONTROL_BACK_TO_NORMAL_DELAY_THRESHOLD_3);
         if (valTH1 != null && valTH2 != null && valTH3 != null && valTB1 != null && valTB2 != null && valTB3 != null) {
             this.congControl_DelayThreshold = new double[3];
             this.congControl_DelayThreshold[0] = valTH1;
@@ -1400,35 +1322,12 @@ public class NettySctpManagementImpl implements Management {
             this.congControl_BackToNormalDelayThreshold[2] = valTB3;
         }
 
-        // TODO: add storing of parameters
-//        Boolean valB = reader.read(OPTION_SCTP_DISABLE_FRAGMENTS, Boolean.class);
-//        if (valB != null)
-//            this.optionSctpDisableFragments = valB;
-//        Integer valI = reader.read(OPTION_SCTP_FRAGMENT_INTERLEAVE, Integer.class);
-//        if (valI != null)
-//            this.optionSctpFragmentInterleave = valI;
-//        Integer valI_In = reader.read(OPTION_SCTP_INIT_MAXSTREAMS_IN, Integer.class);
-//        Integer valI_Out = reader.read(OPTION_SCTP_INIT_MAXSTREAMS_OUT, Integer.class);
-//        if (valI_In != null && valI_Out != null) {
-//            this.optionSctpInitMaxstreams = SctpStandardSocketOptions.InitMaxStreams.create(valI_In, valI_Out);
-//        }
-//        valB = reader.read(OPTION_SCTP_NODELAY, Boolean.class);
-//        if (valB != null)
-//            this.optionSctpNodelay = valB;
-//        valI = reader.read(OPTION_SO_SNDBUF, Integer.class);
-//        if (valI != null)
-//            this.optionSoSndbuf = valI;
-//        valI = reader.read(OPTION_SO_RCVBUF, Integer.class);
-//        if (valI != null)
-//            this.optionSoRcvbuf = valI;
-//        valI = reader.read(OPTION_SO_LINGER, Integer.class);
-//        if (valI != null)
-//            this.optionSoLinger = valI;
+        CopyOnWriteArrayList<Server> loadedServers = (CopyOnWriteArrayList<Server>) rootMap.get(SERVERS);
+        if (loadedServers != null) {
+            this.servers.addAll(loadedServers);
+        }
 
-        this.servers = reader.read(SERVERS, FastList.class);
-
-        for (FastList.Node<Server> n = this.servers.head(), end = this.servers.tail(); (n = n.getNext()) != end;) {
-            Server serverTemp = n.getValue();
+        for (Server serverTemp : this.servers) {
             ((NettyServerImpl) serverTemp).setManagement(this);
             if (serverTemp.isStarted()) {
                 try {
@@ -1439,67 +1338,44 @@ public class NettySctpManagementImpl implements Management {
             }
         }
 
-        this.associations = reader.read(ASSOCIATIONS, NettyAssociationMap.class);
-        for (FastMap.Entry<String, Association> n = this.associations.head(), end = this.associations.tail(); (n = n
-                .getNext()) != end;) {
-            NettyAssociationImpl associationTemp = (NettyAssociationImpl) n.getValue();
-            associationTemp.setManagement(this);
+        NettyAssociationMap<String, Association> loadedAssociations = (NettyAssociationMap<String, Association>) rootMap.get(ASSOCIATIONS);
+        if (loadedAssociations != null) {
+            this.associations.putAll(loadedAssociations);
+        }
+        for (Association associationTemp : this.associations.values()) {
+            NettyAssociationImpl associationImpl = (NettyAssociationImpl) associationTemp;
+            associationImpl.setManagement(this);
         }
     }
 
     public void store() {
-        try {
-            XMLObjectWriter writer = XMLObjectWriter.newInstance(new FileOutputStream(persistFile.toString()));
-            writer.setBinding(binding);
-            // Enables cross-references.
-            // writer.setReferenceResolver(new XMLReferenceResolver());
-            writer.setIndentation(TAB_INDENT);
-
-            writer.write(this.connectDelay, CONNECT_DELAY_PROP, Integer.class);
-            // writer.write(this.workerThreads, WORKER_THREADS_PROP, Integer.class);
-            // writer.write(this.singleThread, SINGLE_THREAD_PROP, Boolean.class);
-
+        XStream xstream = NettySctpXMLBinding.getXStream();
+        
+        try (OutputStreamWriter writer = new OutputStreamWriter(new FileOutputStream(persistFile.toString()))) {
+            // Create a map to hold all the data
+            java.util.Map<String, Object> rootMap = new java.util.HashMap<>();
+            
+            rootMap.put(CONNECT_DELAY_PROP, this.connectDelay);
+            
             if (this.congControl_DelayThreshold != null && this.congControl_DelayThreshold.length == 3) {
-                writer.write(this.congControl_DelayThreshold[0], CONG_CONTROL_DELAY_THRESHOLD_1, Double.class);
-                writer.write(this.congControl_DelayThreshold[1], CONG_CONTROL_DELAY_THRESHOLD_2, Double.class);
-                writer.write(this.congControl_DelayThreshold[2], CONG_CONTROL_DELAY_THRESHOLD_3, Double.class);
+                rootMap.put(CONG_CONTROL_DELAY_THRESHOLD_1, this.congControl_DelayThreshold[0]);
+                rootMap.put(CONG_CONTROL_DELAY_THRESHOLD_2, this.congControl_DelayThreshold[1]);
+                rootMap.put(CONG_CONTROL_DELAY_THRESHOLD_3, this.congControl_DelayThreshold[2]);
             }
             if (this.congControl_BackToNormalDelayThreshold != null && this.congControl_BackToNormalDelayThreshold.length == 3) {
-                writer.write(this.congControl_BackToNormalDelayThreshold[0], CONG_CONTROL_BACK_TO_NORMAL_DELAY_THRESHOLD_1, Double.class);
-                writer.write(this.congControl_BackToNormalDelayThreshold[1], CONG_CONTROL_BACK_TO_NORMAL_DELAY_THRESHOLD_2, Double.class);
-                writer.write(this.congControl_BackToNormalDelayThreshold[2], CONG_CONTROL_BACK_TO_NORMAL_DELAY_THRESHOLD_3, Double.class);
+                rootMap.put(CONG_CONTROL_BACK_TO_NORMAL_DELAY_THRESHOLD_1, this.congControl_BackToNormalDelayThreshold[0]);
+                rootMap.put(CONG_CONTROL_BACK_TO_NORMAL_DELAY_THRESHOLD_2, this.congControl_BackToNormalDelayThreshold[1]);
+                rootMap.put(CONG_CONTROL_BACK_TO_NORMAL_DELAY_THRESHOLD_3, this.congControl_BackToNormalDelayThreshold[2]);
             }
 
-            // TODO: add storing of parameters
-//            if (this.optionSctpDisableFragments != null) {
-//                writer.write(this.optionSctpDisableFragments, OPTION_SCTP_DISABLE_FRAGMENTS, Boolean.class);
-//            }
-//            if (this.optionSctpFragmentInterleave != null) {
-//                writer.write(this.optionSctpFragmentInterleave, OPTION_SCTP_FRAGMENT_INTERLEAVE, Integer.class);
-//            }
-//            if (this.optionSctpInitMaxstreams != null) {
-//                writer.write(this.optionSctpInitMaxstreams.maxInStreams(), OPTION_SCTP_INIT_MAXSTREAMS_IN, Integer.class);
-//                writer.write(this.optionSctpInitMaxstreams.maxOutStreams(), OPTION_SCTP_INIT_MAXSTREAMS_OUT, Integer.class);
-//            }
-//            if (this.optionSctpNodelay != null) {
-//                writer.write(this.optionSctpNodelay, OPTION_SCTP_NODELAY, Boolean.class);
-//            }
-//            if (this.optionSoSndbuf != null) {
-//                writer.write(this.optionSoSndbuf, OPTION_SO_SNDBUF, Integer.class);
-//            }
-//            if (this.optionSoRcvbuf != null) {
-//                writer.write(this.optionSoRcvbuf, OPTION_SO_RCVBUF, Integer.class);
-//            }
-//            if (this.optionSoLinger != null) {
-//                writer.write(this.optionSoLinger, OPTION_SO_LINGER, Integer.class);
-//            }
+            rootMap.put(SERVERS, new CopyOnWriteArrayList<Server>(this.servers));
+            NettyAssociationMap<String, Association> mapForWrite = new NettyAssociationMap<String, Association>();
+            mapForWrite.putAll(this.associations);
+            rootMap.put(ASSOCIATIONS, mapForWrite);
 
-            writer.write(this.servers, SERVERS, FastList.class);
-            writer.write(this.associations, ASSOCIATIONS, NettyAssociationMap.class);
-
-            writer.close();
+            xstream.toXML(rootMap, writer);
         } catch (Exception e) {
-            logger.error("Error while persisting the Rule state in file", e);
+            logger.error("Error while persisting the SCTP state in file", e);
         }
     }
 
@@ -1532,31 +1408,34 @@ public class NettySctpManagementImpl implements Management {
 
 		synchronized (this) {
 			Server modifyServer = null;
-			for (FastList.Node<Server> n = this.servers.head(), end = this.servers.tail(); (n = n.getNext()) != end;) {
-				NettyServerImpl currServer = (NettyServerImpl)n.getValue();
+			for (CopyOnWriteArrayList<Server> serversList = this.servers; ; ) {
+				for (Server server : serversList) {
+					NettyServerImpl currServer = (NettyServerImpl) server;
 
-				if (serverName.equals(currServer.getName())) {
+					if (serverName.equals(currServer.getName())) {
 
-					if (currServer.isStarted()) {
-						throw new Exception(String.format("Server=%s is started. Stop the server before modifying", serverName));
+						if (currServer.isStarted()) {
+							throw new Exception(String.format("Server=%s is started. Stop the server before modifying", serverName));
+						}
+
+						if(hostAddress != null)
+							currServer.setHostAddress(hostAddress);
+						if(port != null)
+							currServer.setHostport(port);
+						if(ipChannelType != null)
+							currServer.setIpChannelType(ipChannelType);
+						if(acceptAnonymousConnections != null)
+							currServer.setAcceptAnonymousConnections(acceptAnonymousConnections);
+						if(maxConcurrentConnectionsCount != null)
+							currServer.setMaxConcurrentConnectionsCount(maxConcurrentConnectionsCount);
+						if(extraHostAddresses!=null)
+							currServer.setExtraHostAddresses(extraHostAddresses);
+
+						modifyServer = currServer;
+						break;
 					}
-
-					if(hostAddress != null)
-						currServer.setHostAddress(hostAddress);
-					if(port != null)
-						currServer.setHostport(port);
-					if(ipChannelType != null)
-						currServer.setIpChannelType(ipChannelType);
-					if(acceptAnonymousConnections != null)
-						currServer.setAcceptAnonymousConnections(acceptAnonymousConnections);
-					if(maxConcurrentConnectionsCount != null)
-						currServer.setMaxConcurrentConnectionsCount(maxConcurrentConnectionsCount);
-					if(extraHostAddresses!=null)
-						currServer.setExtraHostAddresses(extraHostAddresses);
-
-					modifyServer = currServer;
-					break;
 				}
+				break;
 			}
 
 			if (modifyServer == null) {
@@ -1597,8 +1476,8 @@ public class NettySctpManagementImpl implements Management {
 				throw new Exception(String.format("No Association found for name=%s", assocName));
 			}
 
-			for (FastMap.Entry<String, Association> n = this.associations.head(), end = this.associations.tail(); (n = n.getNext()) != end;) {
-				Association associationTemp = n.getValue();
+			for (Map.Entry<String, Association> entry : this.associations.entrySet()) {
+				Association associationTemp = entry.getValue();
 				if(assocName.equals(associationTemp.getName()))
                     continue;
 
@@ -1617,8 +1496,7 @@ public class NettySctpManagementImpl implements Management {
 			{
 				Server newServer = null;
 
-				for (FastList.Node<Server> n = this.servers.head(), end = this.servers.tail(); (n = n.getNext()) != end;) {
-					Server serverTemp = n.getValue();
+				for (Server serverTemp : this.servers) {
 					if (serverTemp.getName().equals(serverName)) {
 						newServer = serverTemp;
 					}
@@ -1632,22 +1510,15 @@ public class NettySctpManagementImpl implements Management {
 					throw new Exception(String.format("Server and Association have different IP channel types"));
 
 				//remove association from current server
-				for (FastList.Node<Server> n = this.servers.head(), end = this.servers.tail(); (n = n.getNext()) != end;) {
-					Server serverTemp = n.getValue();
+				for (Server serverTemp : this.servers) {
 					if (serverTemp.getName().equals(association.getServerName())) {
-						FastList<String> newAssociations2 = new FastList<String>();
-						newAssociations2.addAll(((NettyServerImpl) serverTemp).associations);
-						newAssociations2.remove(assocName);
-						((NettyServerImpl) serverTemp).associations = newAssociations2;
+						((NettyServerImpl) serverTemp).associations.remove(assocName);
 						break;
 					}
 				}
 
 				//add association name to server
-				FastList<String> newAssociations2 = new FastList<String>();
-				newAssociations2.addAll(((NettyServerImpl) newServer).associations);
-				newAssociations2.add(assocName);
-				((NettyServerImpl) newServer).associations = newAssociations2;
+				((NettyServerImpl) newServer).associations.add(assocName);
 
 				association.setServerName(serverName);
 			}
@@ -1655,8 +1526,7 @@ public class NettySctpManagementImpl implements Management {
 			{
 				if(ipChannelType!=null)
 				{
-					for (FastList.Node<Server> n = this.servers.head(), end = this.servers.tail(); (n = n.getNext()) != end;) {
-						Server serverTemp = n.getValue();
+					for (Server serverTemp : this.servers) {
 						if (serverTemp.getName().equals(association.getServerName())) {
 							if (serverTemp.getIpChannelType() != ipChannelType)
 								throw new Exception(String.format("Server and Association have different IP channel types"));
@@ -1700,8 +1570,8 @@ public class NettySctpManagementImpl implements Management {
 			throw new Exception("Association name cannot be null");
 		}
 		synchronized (this) {
-			for (FastMap.Entry<String, Association> n = this.associations.head(), end = this.associations.tail(); (n = n.getNext()) != end;) {
-				Association associationTemp = n.getValue();
+			for (Map.Entry<String, Association> entry : this.associations.entrySet()) {
+				Association associationTemp = entry.getValue();
 				if(assocName.equals(associationTemp.getName()))
 				    continue;
 

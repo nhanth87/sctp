@@ -39,8 +39,12 @@ import java.net.InetSocketAddress;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
-import javolution.xml.XMLFormat;
-import javolution.xml.stream.XMLStreamException;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+
+import com.thoughtworks.xstream.annotations.XStreamAlias;
+import com.thoughtworks.xstream.annotations.XStreamAsAttribute;
+import com.thoughtworks.xstream.annotations.XStreamOmitField;
 
 import org.apache.log4j.Logger;
 import org.mobicents.protocols.api.Association;
@@ -55,47 +59,62 @@ import org.mobicents.protocols.api.PayloadData;
  * @author <a href="mailto:amit.bhayani@telestax.com">Amit Bhayani</a>
  * 
  */
+@XStreamAlias("association")
 public class NettyAssociationImpl implements Association {
 
     protected static final Logger logger = Logger.getLogger(NettyAssociationImpl.class.getName());
 
-    private static final String NAME = "name";
-    private static final String SERVER_NAME = "serverName";
-    private static final String HOST_ADDRESS = "hostAddress";
-    private static final String HOST_PORT = "hostPort";
-
-    private static final String PEER_ADDRESS = "peerAddress";
-    private static final String PEER_PORT = "peerPort";
-
-    private static final String ASSOCIATION_TYPE = "associationType";
-    private static final String IP_CHANNEL_TYPE = "ipChannelType";
-    private static final String EXTRA_HOST_ADDRESS = "extraHostAddress";
-    private static final String EXTRA_HOST_ADDRESSES_SIZE = "extraHostAddressesSize";
-
+    @XStreamAsAttribute
     private String hostAddress;
+    
+    @XStreamAsAttribute
     private int hostPort;
+    
+    @XStreamAsAttribute
     private String peerAddress;
+    
+    @XStreamAsAttribute
     private int peerPort;
+    
+    @XStreamAsAttribute
     private String serverName;
+    
+    @XStreamAsAttribute
     private String name;
+    
+    @XStreamAsAttribute
     private IpChannelType ipChannelType;
+    
     private String[] extraHostAddresses;
+    private String[] extraPeerHostAddresses;  // For peer multihoming support
+    
+    @XStreamOmitField
     private NettyServerImpl server; // this is filled only for anonymous Associations
 
+    @XStreamAsAttribute
     private AssociationType type;
 
+    @XStreamOmitField
     private AssociationListener associationListener = null;
 
+    @XStreamOmitField
     private NettySctpManagementImpl management;
 
     // Is the Association been started by management?
+    @XStreamOmitField
     private volatile boolean started = false;
 
+    @XStreamOmitField
     private volatile boolean isFirstStart = true;
+    
     // Is the Association up (connection is established)
+    @XStreamOmitField
     protected volatile boolean up = false;
 
+    @XStreamOmitField
     private NettySctpChannelInboundHandlerAdapter channelHandler;
+    
+    @XStreamOmitField
     protected int congLevel;
 
     public NettyAssociationImpl() {
@@ -348,6 +367,35 @@ public class NettyAssociationImpl implements Association {
     /*
      * (non-Javadoc)
      * 
+     * @see org.mobicents.protocols.api.Association#getExtraPeerHostAddresses()
+     */
+    @Override
+    public String[] getExtraPeerHostAddresses() {
+        return extraPeerHostAddresses;
+    }
+
+    public void setExtraPeerHostAddresses(String[] extraPeerHostAddresses) {
+        this.extraPeerHostAddresses = extraPeerHostAddresses;
+    }
+
+    /**
+     * Modify association properties.
+     */
+    protected void modifyAssociation(String peerAddress, Integer peerPort, String[] extraHostAddresses) {
+        if (peerAddress != null) {
+            this.peerAddress = peerAddress;
+        }
+        if (peerPort != null) {
+            this.peerPort = peerPort;
+        }
+        if (extraHostAddresses != null) {
+            this.extraHostAddresses = extraHostAddresses;
+        }
+    }
+
+    /*
+     * (non-Javadoc)
+     * 
      * @see org.mobicents.protocols.api.Association#send(org.mobicents.protocols.api.PayloadData)
      */
     @Override
@@ -487,14 +535,17 @@ public class NettyAssociationImpl implements Association {
         if (this.associationListener == null) {
             throw new NullPointerException(String.format("AssociationListener is null for Association=%s", this.name));
         }
+        
+        boolean wasFirstStart = this.isFirstStart;
         this.started = true;
-        isFirstStart = false;
+        this.isFirstStart = false;
 
-        if (this.type == AssociationType.CLIENT && this.isFirstStart) {
-            this.scheduleConnect();
-
-        } else if (this.type == AssociationType.CLIENT && !this.isFirstStart) {
-            this.connect();
+        if (this.type == AssociationType.CLIENT) {
+            if (wasFirstStart) {
+                this.scheduleConnect();
+            } else {
+                this.connect();
+            }
         }
 
         if (logger.isInfoEnabled()) {
@@ -684,60 +735,4 @@ public class NettyAssociationImpl implements Association {
         b.option(SctpChannelOption.SO_RCVBUF, this.management.getOptionSoRcvbuf());
         b.option(SctpChannelOption.SO_LINGER, this.management.getOptionSoLinger());
     }
-
-    /**
-     * XML Serialization/Deserialization
-     */
-    protected static final XMLFormat<NettyAssociationImpl> ASSOCIATION_XML = new XMLFormat<NettyAssociationImpl>(
-            NettyAssociationImpl.class) {
-
-        @SuppressWarnings("unchecked")
-        @Override
-        public void read(javolution.xml.XMLFormat.InputElement xml, NettyAssociationImpl association) throws XMLStreamException {
-            association.name = xml.getAttribute(NAME, "");
-            association.type = AssociationType.getAssociationType(xml.getAttribute(ASSOCIATION_TYPE, ""));
-            association.hostAddress = xml.getAttribute(HOST_ADDRESS, "");
-            association.hostPort = xml.getAttribute(HOST_PORT, 0);
-
-            association.peerAddress = xml.getAttribute(PEER_ADDRESS, "");
-            association.peerPort = xml.getAttribute(PEER_PORT, 0);
-
-            association.serverName = xml.getAttribute(SERVER_NAME, "");
-            association.ipChannelType = IpChannelType
-                    .getInstance(xml.getAttribute(IP_CHANNEL_TYPE, IpChannelType.SCTP.getCode()));
-            if (association.ipChannelType == null)
-                association.ipChannelType = IpChannelType.SCTP;
-
-            int extraHostAddressesSize = xml.getAttribute(EXTRA_HOST_ADDRESSES_SIZE, 0);
-            association.extraHostAddresses = new String[extraHostAddressesSize];
-
-            for (int i = 0; i < extraHostAddressesSize; i++) {
-                association.extraHostAddresses[i] = xml.get(EXTRA_HOST_ADDRESS, String.class);
-            }
-
-        }
-
-        @Override
-        public void write(NettyAssociationImpl association, javolution.xml.XMLFormat.OutputElement xml)
-                throws XMLStreamException {
-            xml.setAttribute(NAME, association.name);
-            xml.setAttribute(ASSOCIATION_TYPE, association.type.getType());
-            xml.setAttribute(HOST_ADDRESS, association.hostAddress);
-            xml.setAttribute(HOST_PORT, association.hostPort);
-
-            xml.setAttribute(PEER_ADDRESS, association.peerAddress);
-            xml.setAttribute(PEER_PORT, association.peerPort);
-
-            xml.setAttribute(SERVER_NAME, association.serverName);
-            xml.setAttribute(IP_CHANNEL_TYPE, association.ipChannelType.getCode());
-
-            xml.setAttribute(EXTRA_HOST_ADDRESSES_SIZE,
-                    association.extraHostAddresses != null ? association.extraHostAddresses.length : 0);
-            if (association.extraHostAddresses != null) {
-                for (String s : association.extraHostAddresses) {
-                    xml.add(s, EXTRA_HOST_ADDRESS, String.class);
-                }
-            }
-        }
-    };
 }

@@ -21,48 +21,43 @@
  */
 package org.mobicents.protocols.sctp;
 
-import java.util.Iterator;
-import java.util.Map;
-
-import javolution.xml.XMLBinding;
-import javolution.xml.XMLFormat;
-import javolution.xml.stream.XMLStreamException;
+import com.thoughtworks.xstream.XStream;
+import com.thoughtworks.xstream.io.xml.DomDriver;
 
 /**
  * @author amit bhayani
  * 
  */
-public class SctpXMLBinding extends XMLBinding {
+public class SctpXMLBinding {
 
-	protected static final XMLFormat<AssociationMap> ASSOCIATION_MAP = new XMLFormat<AssociationMap>(AssociationMap.class) {
+    private static final XStream xstream;
 
-		@Override
-		public void write(AssociationMap obj, javolution.xml.XMLFormat.OutputElement xml) throws XMLStreamException {
-			final Map map = (Map) obj;
+    static {
+        xstream = new XStream(new DomDriver());
+        
+        // Configure aliases
+        xstream.alias("server", ServerImpl.class);
+        xstream.alias("association", AssociationImpl.class);
+        xstream.alias("associationMap", AssociationMap.class);
+        
+        // Process annotations
+        xstream.processAnnotations(AssociationImpl.class);
+        xstream.processAnnotations(ServerImpl.class);
+        xstream.processAnnotations(AssociationMap.class);
+        
+        // Set class attribute for type discrimination
+        xstream.aliasSystemAttribute("type", "class");
+    }
 
-			for (Iterator it = map.entrySet().iterator(); it.hasNext();) {
-				Map.Entry entry = (Map.Entry) it.next();
+    public static XStream getXStream() {
+        return xstream;
+    }
 
-				xml.add((String) entry.getKey(), "name", String.class);
-				xml.add((AssociationImpl) entry.getValue(), "association", AssociationImpl.class);
-			}
-		}
+    public static String toXML(Object obj) {
+        return xstream.toXML(obj);
+    }
 
-		@Override
-		public void read(javolution.xml.XMLFormat.InputElement xml, AssociationMap obj) throws XMLStreamException {
-			while (xml.hasNext()) {
-				String key = xml.get("name", String.class);
-				AssociationImpl association = xml.get("association", AssociationImpl.class);
-				obj.put(key, association);
-			}
-		}
-
-	};
-
-	protected XMLFormat getFormat(Class forClass) throws XMLStreamException {
-		if (AssociationMap.class.equals(forClass)) {
-			return ASSOCIATION_MAP;
-		}
-		return super.getFormat(forClass);
-	}
+    public static Object fromXML(String xml) {
+        return xstream.fromXML(xml);
+    }
 }

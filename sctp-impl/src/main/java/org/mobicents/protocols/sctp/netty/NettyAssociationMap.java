@@ -22,12 +22,29 @@
 
 package org.mobicents.protocols.sctp.netty;
 
-import javolution.util.FastMap;
+import java.util.Map;
+
+import org.jctools.maps.NonBlockingHashMap;
+
+import com.thoughtworks.xstream.annotations.XStreamAlias;
 
 /**
  * @author amit bhayani
  *
  */
-public class NettyAssociationMap<K, V> extends FastMap<K, V> {
+@XStreamAlias("associationMap")
+public class NettyAssociationMap<K, V> extends NonBlockingHashMap<K, V> {
 
+    public NettyAssociationMap() {
+        super();
+    }
+
+    public NettyAssociationMap(int initialCapacity) {
+        super(initialCapacity);
+    }
+
+    public NettyAssociationMap(Map<? extends K, ? extends V> m) {
+        super(m.size());
+        putAll(m);
+    }
 }

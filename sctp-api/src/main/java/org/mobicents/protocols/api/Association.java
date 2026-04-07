@@ -140,6 +140,21 @@ public interface Association {
 	 */
 	public String[] getExtraHostAddresses();
 
+    /**
+     * When SCTP multi-homing - extra peer IP addresses (for peer multihoming support).
+     * This allows the local endpoint to connect via multiple addresses of the peer.
+     * 
+     * @return array of extra peer IP addresses, or null if not configured
+     */
+    public String[] getExtraPeerHostAddresses();
+    
+    /**
+     * Set extra peer IP addresses for SCTP multi-homing.
+     * 
+     * @param extraPeerHostAddresses array of extra peer IP addresses
+     */
+    public void setExtraPeerHostAddresses(String[] extraPeerHostAddresses);
+
 	/**
 	 * Send the {@link PayloadData} to the peer
 	 * 

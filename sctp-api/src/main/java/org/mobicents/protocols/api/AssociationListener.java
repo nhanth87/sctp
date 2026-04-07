@@ -103,4 +103,36 @@ public interface AssociationListener {
 	 */
 	public void inValidStreamId(PayloadData payloadData);
 
+    /**
+     * Invoked when the peer's address configuration changes (SCTP multi-homing).
+     * This happens when the peer adds, removes, or changes primary address.
+     * 
+     * @param association
+     * @param peerAddress The new or changed peer address
+     * @param changeType The type of address change (ADDED, REMOVED, MADE_PRIMARY, AVAILABLE, UNCONFIRMED)
+     */
+    public default void onPeerAddressChanged(Association association, String peerAddress, String changeType) {
+        // Default implementation does nothing - can be overridden by users
+    }
+
+    /**
+     * Invoked when the peer becomes unreachable through all paths (failover complete).
+     * 
+     * @param association
+     * @param availableAddress The last known available address of the peer
+     */
+    public default void onPeerUnreachable(Association association, String availableAddress) {
+        // Default implementation does nothing - can be overridden by users
+    }
+
+    /**
+     * Invoked when the peer becomes reachable again after a failover.
+     * 
+     * @param association
+     * @param primaryAddress The primary address of the peer
+     */
+    public default void onPeerReachable(Association association, String primaryAddress) {
+        // Default implementation does nothing - can be overridden by users
+    }
+
 }

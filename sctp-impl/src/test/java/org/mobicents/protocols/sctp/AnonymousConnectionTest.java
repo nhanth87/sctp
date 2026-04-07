@@ -25,9 +25,9 @@ package org.mobicents.protocols.sctp;
 import static org.junit.Assert.*;
 import io.netty.buffer.Unpooled;
 
+import java.util.ArrayList;
 import java.util.Arrays;
-
-import javolution.util.FastList;
+import java.util.List;
 
 import org.apache.log4j.Logger;
 import org.mobicents.protocols.api.Association;
@@ -82,7 +82,7 @@ public class AnonymousConnectionTest implements ServerListener {
 	private AssociationData assDataClt1; 
 	private AssociationData assDataClt2; 
 	private AssociationData assDataClt3; 
-	private FastList<AssociationData> assDataSrv = new FastList<AssociationData>(); 
+	private List<AssociationData> assDataSrv = new ArrayList<AssociationData>(); 
 
 	@BeforeClass
 	public static void setUpClass() throws Exception {

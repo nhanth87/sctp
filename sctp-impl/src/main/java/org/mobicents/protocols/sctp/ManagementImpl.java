@@ -27,22 +27,20 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
 import java.nio.channels.Selector;
 import java.nio.channels.spi.SelectorProvider;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
-import javolution.text.TextBuilder;
-import javolution.util.FastList;
-import javolution.util.FastMap;
-import javolution.xml.XMLObjectReader;
-import javolution.xml.XMLObjectWriter;
-import javolution.xml.stream.XMLStreamException;
+import org.jctools.maps.NonBlockingHashMap;
+import org.jctools.queues.MpscArrayQueue;
 
 import org.apache.log4j.Logger;
 import org.mobicents.protocols.api.Association;
@@ -54,6 +52,8 @@ import org.mobicents.protocols.api.ManagementEventListener;
 import org.mobicents.protocols.api.Server;
 import org.mobicents.protocols.api.ServerListener;
 import org.mobicents.protocols.sctp.netty.NettySctpManagementImpl;
+
+import com.thoughtworks.xstream.XStream;
 
 /**
  * @author amit bhayani
@@ -75,20 +75,18 @@ public class ManagementImpl implements Management {
     private static final String SINGLE_THREAD_PROP = "singlethread";
     private static final String WORKER_THREADS_PROP = "workerthreads";
 
-	private final TextBuilder persistFile = TextBuilder.newInstance();
+	private final StringBuilder persistFile = new StringBuilder();
 
-	protected static final SctpXMLBinding binding = new SctpXMLBinding();
-	protected static final String TAB_INDENT = "\t";
-	private static final String CLASS_ATTRIBUTE = "type";
+	private static final String TAB_INDENT = "\t";
 
 	private final String name;
 
 	protected String persistDir = null;
 
-	protected FastList<Server> servers = new FastList<Server>();
-	protected AssociationMap<String, Association> associations = new AssociationMap<String, Association>();
+	protected final CopyOnWriteArrayList<Server> servers = new CopyOnWriteArrayList<>();
+	protected final AssociationMap<String, Association> associations = new AssociationMap<>();
 
-	private FastList<ChangeRequest> pendingChanges = new FastList<ChangeRequest>();
+	private final MpscArrayQueue<ChangeRequest> pendingChanges = new MpscArrayQueue<>(1024);
 
 	// Create a new selector
 	private Selector socketSelector = null;
@@ -113,7 +111,7 @@ public class ManagementImpl implements Management {
 
     private ExecutorService[] executorServices = null;
 
-    private FastList<ManagementEventListener> managementEventListeners = new FastList<ManagementEventListener>();
+    private final List<ManagementEventListener> managementEventListeners = new CopyOnWriteArrayList<>();
 
     private ServerListener serverListener = null;
 
@@ -121,10 +119,6 @@ public class ManagementImpl implements Management {
 
 	public ManagementImpl(String name) throws IOException {
 		this.name = name;
-		binding.setClassAttribute(CLASS_ATTRIBUTE);
-		binding.setAlias(ServerImpl.class, "server");
-		binding.setAlias(AssociationImpl.class, "association");
-		binding.setAlias(String.class, "string");
 		this.socketSelector = SelectorProvider.provider().openSelector();
 	}
 
@@ -243,7 +237,7 @@ public class ManagementImpl implements Management {
         return serverListener;
     }
 
-    protected FastList<ManagementEventListener> getManagementEventListeners() {
+    protected List<ManagementEventListener> getManagementEventListeners() {
         return managementEventListeners;
     }
 
@@ -252,27 +246,13 @@ public class ManagementImpl implements Management {
     }
 
     public void addManagementEventListener(ManagementEventListener listener) {
-        synchronized (this) {
-            if (this.managementEventListeners.contains(listener))
-                return;
-
-            FastList<ManagementEventListener> newManagementEventListeners = new FastList<ManagementEventListener>();
-            newManagementEventListeners.addAll(this.managementEventListeners);
-            newManagementEventListeners.add(listener);
-            this.managementEventListeners = newManagementEventListeners;
+        if (!this.managementEventListeners.contains(listener)) {
+            this.managementEventListeners.add(listener);
         }
     }
 
     public void removeManagementEventListener(ManagementEventListener listener) {
-        synchronized (this) {
-            if (!this.managementEventListeners.contains(listener))
-                return;
-
-            FastList<ManagementEventListener> newManagementEventListeners = new FastList<ManagementEventListener>();
-            newManagementEventListeners.addAll(this.managementEventListeners);
-            newManagementEventListeners.remove(listener);
-            this.managementEventListeners = newManagementEventListeners;
-        }
+        this.managementEventListeners.remove(listener);
     }
 
     public void start() throws Exception {
@@ -283,7 +263,7 @@ public class ManagementImpl implements Management {
         }
 
         synchronized (this) {
-            this.persistFile.clear();
+            this.persistFile.setLength(0);
 
             if (persistDir != null) {
                 this.persistFile.append(persistDir).append(File.separator).append(this.name).append("_").append(PERSIST_FILE_NAME);
@@ -348,17 +328,13 @@ public class ManagementImpl implements Management {
         this.store();
 
         // Stop all associations
-        FastMap<String, Association> associationsTemp = this.associations;
-        for (FastMap.Entry<String, Association> n = associationsTemp.head(), end = associationsTemp.tail(); (n = n.getNext()) != end;) {
-            Association associationTemp = n.getValue();
+        for (Association associationTemp : this.associations.values()) {
             if (associationTemp.isStarted()) {
                 ((AssociationImpl) associationTemp).stop();
             }
         }
 
-        FastList<Server> tempServers = servers;
-        for (FastList.Node<Server> n = tempServers.head(), end = tempServers.tail(); (n = n.getNext()) != end;) {
-            Server serverTemp = n.getValue();
+        for (Server serverTemp : servers) {
             if (serverTemp.isStarted()) {
                 try {
                     ((ServerImpl) serverTemp).stop();
@@ -380,8 +356,7 @@ public class ManagementImpl implements Management {
         // waiting till stopping associations
         for (int i1 = 0; i1 < 20; i1++) {
             boolean assConnected = false;
-            for (FastMap.Entry<String, Association> n = this.associations.head(), end = this.associations.tail(); (n = n.getNext()) != end;) {
-                Association associationTemp = n.getValue();
+            for (Association associationTemp : this.associations.values()) {
                 if (associationTemp.isConnected()) {
                     assConnected = true;
                     break;
@@ -417,89 +392,74 @@ public class ManagementImpl implements Management {
 
     @SuppressWarnings("unchecked")
     public void load() throws FileNotFoundException {
-        XMLObjectReader reader = null;
-        try {
-            reader = XMLObjectReader.newInstance(new FileInputStream(persistFile.toString()));
-            reader.setBinding(binding);
+        XStream xstream = SctpXMLBinding.getXStream();
+        
+        try (InputStreamReader reader = new InputStreamReader(new FileInputStream(persistFile.toString()))) {
+            // Read the root element to get individual properties
+            java.util.Map<String, Object> rootMap = (java.util.Map<String, Object>) xstream.fromXML(reader);
+            
+            if (rootMap != null) {
+                try {
+                    Integer vali = (Integer) rootMap.get(CONNECT_DELAY_PROP);
+                    if (vali != null)
+                        this.connectDelay = vali;
+                    vali = (Integer) rootMap.get(WORKER_THREADS_PROP);
+                    Boolean valb = (Boolean) rootMap.get(SINGLE_THREAD_PROP);
 
-            try {
-                Integer vali = reader.read(CONNECT_DELAY_PROP, Integer.class);
-                if (vali != null)
-                    this.connectDelay = vali;
-//                this.workerThreads = reader.read(WORKER_THREADS_PROP, Integer.class);
-//                this.singleThread = reader.read(SINGLE_THREAD_PROP, Boolean.class);
-                vali = reader.read(WORKER_THREADS_PROP, Integer.class);
-                Boolean valb = reader.read(SINGLE_THREAD_PROP, Boolean.class);
+                    Double valTH1 = (Double) rootMap.get(NettySctpManagementImpl.CONG_CONTROL_DELAY_THRESHOLD_1);
+                    Double valTH2 = (Double) rootMap.get(NettySctpManagementImpl.CONG_CONTROL_DELAY_THRESHOLD_2);
+                    Double valTH3 = (Double) rootMap.get(NettySctpManagementImpl.CONG_CONTROL_DELAY_THRESHOLD_3);
+                    Double valTB1 = (Double) rootMap.get(NettySctpManagementImpl.CONG_CONTROL_BACK_TO_NORMAL_DELAY_THRESHOLD_1);
+                    Double valTB2 = (Double) rootMap.get(NettySctpManagementImpl.CONG_CONTROL_BACK_TO_NORMAL_DELAY_THRESHOLD_2);
+                    Double valTB3 = (Double) rootMap.get(NettySctpManagementImpl.CONG_CONTROL_BACK_TO_NORMAL_DELAY_THRESHOLD_3);
+                } catch (java.lang.NullPointerException npe) {
+                    // ignore.
+                    // For backward compatibility we can ignore if these values are not defined
+                }
 
-                Double valTH1 = reader.read(NettySctpManagementImpl.CONG_CONTROL_DELAY_THRESHOLD_1, Double.class);
-                Double valTH2 = reader.read(NettySctpManagementImpl.CONG_CONTROL_DELAY_THRESHOLD_2, Double.class);
-                Double valTH3 = reader.read(NettySctpManagementImpl.CONG_CONTROL_DELAY_THRESHOLD_3, Double.class);
-                Double valTB1 = reader
-                    .read(NettySctpManagementImpl.CONG_CONTROL_BACK_TO_NORMAL_DELAY_THRESHOLD_1, Double.class);
-                Double valTB2 = reader
-                    .read(NettySctpManagementImpl.CONG_CONTROL_BACK_TO_NORMAL_DELAY_THRESHOLD_2, Double.class);
-                Double valTB3 = reader
-                    .read(NettySctpManagementImpl.CONG_CONTROL_BACK_TO_NORMAL_DELAY_THRESHOLD_3, Double.class);
+                CopyOnWriteArrayList<Server> loadedServers = (CopyOnWriteArrayList<Server>) rootMap.get(SERVERS);
+                if (loadedServers != null) {
+                    this.servers.addAll(loadedServers);
+                }
 
-                // TODO: revive this test when we introduce of parameters persistense 
-//                Boolean valB = reader.read(NettySctpManagementImpl.OPTION_SCTP_DISABLE_FRAGMENTS, Boolean.class);
-//                Integer valI = reader.read(NettySctpManagementImpl.OPTION_SCTP_FRAGMENT_INTERLEAVE, Integer.class);
-//                Integer valI_In = reader.read(NettySctpManagementImpl.OPTION_SCTP_INIT_MAXSTREAMS_IN, Integer.class);
-//                Integer valI_Out = reader.read(NettySctpManagementImpl.OPTION_SCTP_INIT_MAXSTREAMS_OUT, Integer.class);
-//                valB = reader.read(NettySctpManagementImpl.OPTION_SCTP_NODELAY, Boolean.class);
-//                valI = reader.read(NettySctpManagementImpl.OPTION_SO_SNDBUF, Integer.class);
-//                valI = reader.read(NettySctpManagementImpl.OPTION_SO_RCVBUF, Integer.class);
-//                valI = reader.read(NettySctpManagementImpl.OPTION_SO_LINGER, Integer.class);
-
-            } catch (java.lang.NullPointerException npe) {
-                // ignore.
-                // For backward compatibility we can ignore if these values are not defined
-            }
-
-            this.servers = reader.read(SERVERS, FastList.class);
-
-            for (FastList.Node<Server> n = this.servers.head(), end = this.servers.tail(); (n = n.getNext()) != end;) {
-                Server serverTemp = n.getValue();
-                ((ServerImpl) serverTemp).setManagement(this);
-                if (serverTemp.isStarted()) {
-                    try {
-                        ((ServerImpl) serverTemp).start();
-                    } catch (Exception e) {
-                        logger.error(String.format("Error while initiating Server=%s", serverTemp.getName()), e);
+                for (Server serverTemp : this.servers) {
+                    ((ServerImpl) serverTemp).setManagement(this);
+                    if (serverTemp.isStarted()) {
+                        try {
+                            ((ServerImpl) serverTemp).start();
+                        } catch (Exception e) {
+                            logger.error(String.format("Error while initiating Server=%s", serverTemp.getName()), e);
+                        }
                     }
                 }
-            }
 
-            this.associations = reader.read(ASSOCIATIONS, AssociationMap.class);
-            for (FastMap.Entry<String, Association> n = this.associations.head(), end = this.associations.tail(); (n = n.getNext()) != end;) {
-                AssociationImpl associationTemp = (AssociationImpl) n.getValue();
-                associationTemp.setManagement(this);
+                AssociationMap<String, Association> loadedAssociations = (AssociationMap<String, Association>) rootMap.get(ASSOCIATIONS);
+                if (loadedAssociations != null) {
+                    this.associations.putAll(loadedAssociations);
+                }
+                for (Association associationTemp : this.associations.values()) {
+                    ((AssociationImpl) associationTemp).setManagement(this);
+                }
             }
-
-        } catch (XMLStreamException ex) {
-            // this.logger.info(
-            // "Error while re-creating Linksets from persisted file", ex);
+        } catch (Exception ex) {
+            logger.error("Error while loading SCTP configuration from persisted file", ex);
         }
     }
 
     public void store() {
-        try {
-            XMLObjectWriter writer = XMLObjectWriter.newInstance(new FileOutputStream(persistFile.toString()));
-            writer.setBinding(binding);
-            // Enables cross-references.
-            // writer.setReferenceResolver(new XMLReferenceResolver());
-            writer.setIndentation(TAB_INDENT);
-
-            writer.write(this.connectDelay, CONNECT_DELAY_PROP, Integer.class);
-//            writer.write(this.workerThreads, WORKER_THREADS_PROP, Integer.class);
-//            writer.write(this.singleThread, SINGLE_THREAD_PROP, Boolean.class);
-
-            writer.write(this.servers, SERVERS, FastList.class);
-            writer.write(this.associations, ASSOCIATIONS, AssociationMap.class);
-
-            writer.close();
+        XStream xstream = SctpXMLBinding.getXStream();
+        
+        try (OutputStreamWriter writer = new OutputStreamWriter(new FileOutputStream(persistFile.toString()))) {
+            // Create a map to hold all the data
+            java.util.Map<String, Object> rootMap = new java.util.HashMap<>();
+            
+            rootMap.put(CONNECT_DELAY_PROP, this.connectDelay);
+            rootMap.put(SERVERS, new CopyOnWriteArrayList<>(this.servers));
+            rootMap.put(ASSOCIATIONS, this.associations);
+            
+            xstream.toXML(rootMap, writer);
         } catch (Exception e) {
-            logger.error("Error while persisting the Rule state in file", e);
+            logger.error("Error while persisting the SCTP state in file", e);
         }
     }
 
@@ -520,23 +480,20 @@ public class ManagementImpl implements Management {
 
             synchronized (this) {
                 // Remove all associations
-                ArrayList<String> lst = new ArrayList<String>();
-                for (FastMap.Entry<String, Association> n = this.associations.head(), end = this.associations.tail(); (n = n.getNext()) != end;) {
-                    lst.add(n.getKey());
-                }
-                for (String n : lst) {
-                    this.stopAssociation(n);
-                    this.removeAssociation(n);
+                List<String> assocNames = new ArrayList<>(this.associations.keySet());
+                for (String assocName : assocNames) {
+                    this.stopAssociation(assocName);
+                    this.removeAssociation(assocName);
                 }
 
                 // Remove all servers
-                lst.clear();
-                for (FastList.Node<Server> n = this.servers.head(), end = this.servers.tail(); (n = n.getNext()) != end;) {
-                    lst.add(n.getValue().getName());
+                List<String> serverNames = new ArrayList<>();
+                for (Server server : this.servers) {
+                    serverNames.add(server.getName());
                 }
-                for (String n : lst) {
-                    this.stopServer(n);
-                    this.removeServer(n);
+                for (String serverName : serverNames) {
+                    this.stopServer(serverName);
+                    this.removeServer(serverName);
                 }
 
                 // We store the cleared state
@@ -585,8 +542,7 @@ public class ManagementImpl implements Management {
         }
 
         synchronized (this) {
-            for (FastList.Node<Server> n = this.servers.head(), end = this.servers.tail(); (n = n.getNext()) != end;) {
-                Server serverTemp = n.getValue();
+            for (Server serverTemp : this.servers) {
                 if (serverName.equals(serverTemp.getName())) {
                     throw new Exception(String.format("Server name=%s already exist", serverName));
                 }
@@ -601,10 +557,7 @@ public class ManagementImpl implements Management {
                 maxConcurrentConnectionsCount, maxInputSctpStreams, maxOutputSctpStreams,extraHostAddresses);
             server.setManagement(this);
 
-            FastList<Server> newServers = new FastList<Server>();
-            newServers.addAll(this.servers);
-            newServers.add(server);
-            this.servers = newServers;
+            this.servers.add(server);
             // this.servers.add(server);
 
             this.store();
@@ -637,18 +590,17 @@ public class ManagementImpl implements Management {
 
         synchronized (this) {
             Server removeServer = null;
-            for (FastList.Node<Server> n = this.servers.head(), end = this.servers.tail(); (n = n.getNext()) != end;) {
-                ServerImpl serverTemp = (ServerImpl)n.getValue();
-
-                if (serverName.equals(serverTemp.getName())) {
+            for (Server serverTemp : this.servers) {
+                ServerImpl serverImplTemp = (ServerImpl) serverTemp;
+                if (serverName.equals(serverImplTemp.getName())) {
                     if (serverTemp.isStarted()) {
                         throw new Exception(String.format("Server=%s is started. Stop the server before removing", serverName));
                     }
 
-                    if(serverTemp.anonymAssociations.size() !=0 || serverTemp.associations.size() != 0){
+                    if(serverImplTemp.anonymAssociations.size() !=0 || serverImplTemp.associations.size() != 0){
                         throw new Exception(String.format("Server=%s has Associations. Remove all those Associations before removing Server", serverName));
                     }
-                    removeServer = serverTemp;
+                    removeServer = serverImplTemp;
                     break;
                 }
             }
@@ -657,10 +609,7 @@ public class ManagementImpl implements Management {
                 throw new Exception(String.format("No Server found with name=%s", serverName));
             }
 
-            FastList<Server> newServers = new FastList<Server>();
-            newServers.addAll(this.servers);
-            newServers.remove(removeServer);
-            this.servers = newServers;
+            this.servers.remove(removeServer);
             // this.servers.remove(removeServer);
 
             this.store();
@@ -685,9 +634,7 @@ public class ManagementImpl implements Management {
             throw new Exception("Server name cannot be null");
         }
 
-        FastList<Server> tempServers = servers;
-        for (FastList.Node<Server> n = tempServers.head(), end = tempServers.tail(); (n = n.getNext()) != end;) {
-            Server serverTemp = n.getValue();
+        for (Server serverTemp : servers) {
 
             if (serverName.equals(serverTemp.getName())) {
                 if (serverTemp.isStarted()) {
@@ -712,9 +659,7 @@ public class ManagementImpl implements Management {
             throw new Exception("Server name cannot be null");
         }
 
-        FastList<Server> tempServers = servers;
-        for (FastList.Node<Server> n = tempServers.head(), end = tempServers.tail(); (n = n.getNext()) != end;) {
-            Server serverTemp = n.getValue();
+        for (Server serverTemp : servers) {
 
             if (serverName.equals(serverTemp.getName())) {
                 ((ServerImpl) serverTemp).stop();
@@ -760,8 +705,7 @@ public class ManagementImpl implements Management {
 
             Server server = null;
 
-            for (FastList.Node<Server> n = this.servers.head(), end = this.servers.tail(); (n = n.getNext()) != end;) {
-                Server serverTemp = n.getValue();
+            for (Server serverTemp : this.servers) {
                 if (serverTemp.getName().equals(serverName)) {
                     server = serverTemp;
                 }
@@ -771,8 +715,7 @@ public class ManagementImpl implements Management {
                 throw new Exception(String.format("No Server found for name=%s", serverName));
             }
 
-            for (FastMap.Entry<String, Association> n = this.associations.head(), end = this.associations.tail(); (n = n.getNext()) != end;) {
-                Association associationTemp = n.getValue();
+            for (Association associationTemp : this.associations.values()) {
 
                 if (peerAddress.equals(associationTemp.getPeerAddress()) && associationTemp.getPeerPort() == peerPort) {
                     throw new Exception(String.format("Already has association=%s with same peer address=%s and port=%d", associationTemp.getName(),
@@ -786,16 +729,8 @@ public class ManagementImpl implements Management {
             AssociationImpl association = new AssociationImpl(peerAddress, peerPort, serverName, assocName, ipChannelType);
             association.setManagement(this);
 
-            AssociationMap<String, Association> newAssociations = new AssociationMap<String, Association>();
-            newAssociations.putAll(this.associations);
-            newAssociations.put(assocName, association);
-            this.associations = newAssociations;
-            // this.associations.put(assocName, association);
-
-            FastList<String> newAssociations2 = new FastList<String>();
-            newAssociations2.addAll(((ServerImpl) server).associations);
-            newAssociations2.add(assocName);
-            ((ServerImpl) server).associations = newAssociations2;
+            this.associations.put(assocName, association);
+            ((ServerImpl) server).associations.add(assocName);
             // ((ServerImpl) server).associations.add(assocName);
 
             this.store();
@@ -848,8 +783,7 @@ public class ManagementImpl implements Management {
         }
 
         synchronized (this) {
-            for (FastMap.Entry<String, Association> n = this.associations.head(), end = this.associations.tail(); (n = n.getNext()) != end;) {
-                Association associationTemp = n.getValue();
+            for (Association associationTemp : this.associations.values()) {
 
                 if (assocName.equals(associationTemp.getName())) {
                     throw new Exception(String.format("Already has association=%s", associationTemp.getName()));
@@ -870,10 +804,7 @@ public class ManagementImpl implements Management {
             AssociationImpl association = new AssociationImpl(hostAddress, hostPort, peerAddress, peerPort, assocName, ipChannelType, extraHostAddresses);
             association.setManagement(this);
 
-            AssociationMap<String, Association> newAssociations = new AssociationMap<String, Association>();
-            newAssociations.putAll(this.associations);
-            newAssociations.put(assocName, association);
-            this.associations = newAssociations;
+            this.associations.put(assocName, association);
             // associations.put(assocName, association);
 
             this.store();
@@ -910,9 +841,9 @@ public class ManagementImpl implements Management {
      * @return the associations
      */
     public Map<String, Association> getAssociations() {
-        Map<String, Association> routeTmp = new HashMap<String, Association>();
-        routeTmp.putAll(this.associations);
-        return routeTmp;
+        Map<String, Association> result = new NonBlockingHashMap<>();
+        result.putAll(this.associations);
+        return result;
     }
 
     public void startAssociation(String assocName) throws Exception {
@@ -977,23 +908,13 @@ public class ManagementImpl implements Management {
                 throw new Exception(String.format("Association name=%s is started. Stop before removing", assocName));
             }
 
-            AssociationMap<String, Association> newAssociations = new AssociationMap<String, Association>();
-            newAssociations.putAll(this.associations);
-            newAssociations.remove(assocName);
-            this.associations = newAssociations;
+            this.associations.remove(assocName);
             // this.associations.remove(assocName);
 
             if (((AssociationImpl) association).getAssociationType() == AssociationType.SERVER) {
-                for (FastList.Node<Server> n = this.servers.head(), end = this.servers.tail(); (n = n.getNext()) != end;) {
-                    Server serverTemp = n.getValue();
+                for (Server serverTemp : this.servers) {
                     if (serverTemp.getName().equals(association.getServerName())) {
-                        FastList<String> newAssociations2 = new FastList<String>();
-                        newAssociations2.addAll(((ServerImpl) serverTemp).associations);
-                        newAssociations2.remove(assocName);
-                        ((ServerImpl) serverTemp).associations = newAssociations2;
-                        // ((ServerImpl)
-                        // serverTemp).associations.remove(assocName);
-
+                        ((ServerImpl) serverTemp).associations.remove(assocName);
                         break;
                     }
                 }
@@ -1015,13 +936,13 @@ public class ManagementImpl implements Management {
      * @return the servers
      */
     public List<Server> getServers() {
-        return servers.unmodifiable();
+        return servers;
     }
 
     /**
      * @return the pendingChanges
      */
-    protected FastList<ChangeRequest> getPendingChanges() {
+    protected MpscArrayQueue<ChangeRequest> getPendingChanges() {
         return pendingChanges;
     }
 
@@ -1245,9 +1166,8 @@ public class ManagementImpl implements Management {
 
         synchronized (this) {
             Server modifyServer = null;
-            for (FastList.Node<Server> n = this.servers.head(), end = this.servers.tail(); (n = n.getNext()) != end;) {
-                ServerImpl currServer = (ServerImpl)n.getValue();
-
+            for (Server server : this.servers) {
+                ServerImpl currServer = (ServerImpl) server;
                 if (serverName.equals(currServer.getName())) {
 
                     if (currServer.isStarted()) {
@@ -1310,8 +1230,7 @@ public class ManagementImpl implements Management {
                 throw new Exception(String.format("No Association found for name=%s", associationName));
             }
 
-            for (FastMap.Entry<String, Association> n = this.associations.head(), end = this.associations.tail(); (n = n.getNext()) != end;) {
-                Association associationTemp = n.getValue();
+            for (Association associationTemp : this.associations.values()) {
 
                 if (peerAddress != null && peerAddress.equals(associationTemp.getPeerAddress()) && associationTemp.getPeerPort() == peerPort) {
                     throw new Exception(String.format("Already has association=%s with same peer address=%s and port=%d", associationTemp.getName(),
@@ -1328,8 +1247,7 @@ public class ManagementImpl implements Management {
             {
                 Server newServer = null;
 
-                for (FastList.Node<Server> n = this.servers.head(), end = this.servers.tail(); (n = n.getNext()) != end;) {
-                    Server serverTemp = n.getValue();
+                for (Server serverTemp : this.servers) {
                     if (serverTemp.getName().equals(serverName)) {
                         newServer = serverTemp;
                     }
@@ -1343,22 +1261,15 @@ public class ManagementImpl implements Management {
                     throw new Exception(String.format("Server and Association have different IP channel types"));
 
                 //remove association from current server
-                for (FastList.Node<Server> n = this.servers.head(), end = this.servers.tail(); (n = n.getNext()) != end;) {
-                    Server serverTemp = n.getValue();
+                for (Server serverTemp : this.servers) {
                     if (serverTemp.getName().equals(association.getServerName())) {
-                        FastList<String> newAssociations2 = new FastList<String>();
-                        newAssociations2.addAll(((ServerImpl) serverTemp).associations);
-                        newAssociations2.remove(associationName);
-                        ((ServerImpl) serverTemp).associations = newAssociations2;
+                        ((ServerImpl) serverTemp).associations.remove(associationName);
                         break;
                     }
                 }
 
                 //add association name to server
-                FastList<String> newAssociations2 = new FastList<String>();
-                newAssociations2.addAll(((ServerImpl) newServer).associations);
-                newAssociations2.add(associationName);
-                ((ServerImpl) newServer).associations = newAssociations2;
+                ((ServerImpl) newServer).associations.add(associationName);
 
                 association.setServerName(serverName);
             }
@@ -1366,8 +1277,7 @@ public class ManagementImpl implements Management {
             {
                 if(ipChannelType!=null)
                 {
-                    for (FastList.Node<Server> n = this.servers.head(), end = this.servers.tail(); (n = n.getNext()) != end;) {
-                        Server serverTemp = n.getValue();
+                    for (Server serverTemp : this.servers) {
                         if (serverTemp.getName().equals(association.getServerName())) {
                             if (serverTemp.getIpChannelType() != ipChannelType)
                                 throw new Exception(String.format("Server and Association have different IP channel types"));
@@ -1411,8 +1321,7 @@ public class ManagementImpl implements Management {
             throw new Exception("Association name cannot be null");
         }
         synchronized (this) {
-            for (FastMap.Entry<String, Association> n = this.associations.head(), end = this.associations.tail(); (n = n.getNext()) != end;) {
-                Association associationTemp = n.getValue();
+            for (Association associationTemp : this.associations.values()) {
 
                 if (peerAddress !=null && peerAddress.equals(associationTemp.getPeerAddress()) && associationTemp.getPeerPort() == peerPort) {
                     throw new Exception(String.format("Already has association=%s with same peer address=%s and port=%d", associationTemp.getName(),

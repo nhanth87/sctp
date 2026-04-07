@@ -27,20 +27,34 @@ import io.netty.util.ReferenceCountUtil;
 import org.mobicents.commons.HexTools;
 
 /**
- * The actual pay load data received or to be sent from/to underlying socket
+ * The actual pay load data received or to be sent from/to underlying socket.
+ * Optimized for object pooling with Javolution.
  *
  * @author amit bhayani
+ * @author jenny (added pooling support)
  *
  */
 public class PayloadData {
 
-    private final int dataLength;
-    private final ByteBuf byteBuf;
-    private final boolean complete;
-    private final boolean unordered;
-    private final int payloadProtocolId;
-    private final int streamNumber;
+    private int dataLength;
+    private ByteBuf byteBuf;
+    private boolean complete;
+    private boolean unordered;
+    private int payloadProtocolId;
+    private int streamNumber;
     private int retryCount = 0;
+    
+    // Pooling support
+    private boolean pooled = false;
+    private boolean available = true;
+
+    /**
+     * Default constructor for pooling.
+     * Use PayloadDataPool.acquire() instead of direct instantiation.
+     */
+    public PayloadData() {
+        // Empty constructor for pooling
+    }
 
     /**
      * @param dataLength
@@ -57,13 +71,7 @@ public class PayloadData {
      *            the SCTP stream number
      */
     public PayloadData(int dataLength, ByteBuf byteBuf, boolean complete, boolean unordered, int payloadProtocolId, int streamNumber) {
-        super();
-        this.dataLength = dataLength;
-        this.byteBuf = byteBuf;
-        this.complete = complete;
-        this.unordered = unordered;
-        this.payloadProtocolId = payloadProtocolId;
-        this.streamNumber = streamNumber;
+        reset(dataLength, byteBuf, complete, unordered, payloadProtocolId, streamNumber);
     }
 
     /**
@@ -79,15 +87,70 @@ public class PayloadData {
      *            protocol ID of the data carried
      * @param streamNumber
      *            the SCTP stream number
+     * @deprecated Use ByteBuf constructor for zero-copy. This will be removed in future versions.
      */
+    @Deprecated
     public PayloadData(int dataLength, byte[] data, boolean complete, boolean unordered, int payloadProtocolId, int streamNumber) {
-        super();
         this.dataLength = dataLength;
         this.byteBuf = Unpooled.wrappedBuffer(data);
         this.complete = complete;
         this.unordered = unordered;
         this.payloadProtocolId = payloadProtocolId;
         this.streamNumber = streamNumber;
+    }
+    
+    /**
+     * Reset this object for reuse from pool.
+     * This method should only be called by PayloadDataPool.
+     */
+    public void reset(int dataLength, ByteBuf byteBuf, boolean complete, boolean unordered, int payloadProtocolId, int streamNumber) {
+        this.dataLength = dataLength;
+        this.byteBuf = byteBuf;
+        this.complete = complete;
+        this.unordered = unordered;
+        this.payloadProtocolId = payloadProtocolId;
+        this.streamNumber = streamNumber;
+        this.retryCount = 0;
+        this.available = false;
+    }
+    
+    /**
+     * Clear this object and prepare for return to pool.
+     * Releases the ByteBuf reference.
+     */
+    public void clear() {
+        if (this.byteBuf != null) {
+            ReferenceCountUtil.release(this.byteBuf);
+            this.byteBuf = null;
+        }
+        this.dataLength = 0;
+        this.complete = false;
+        this.unordered = false;
+        this.payloadProtocolId = 0;
+        this.streamNumber = 0;
+        this.retryCount = 0;
+        this.available = true;
+    }
+    
+    /**
+     * Check if this object is available in pool.
+     */
+    public boolean isAvailable() {
+        return this.available;
+    }
+    
+    /**
+     * Mark as pooled object.
+     */
+    public void setPooled(boolean pooled) {
+        this.pooled = pooled;
+    }
+    
+    /**
+     * Check if this is a pooled object.
+     */
+    public boolean isPooled() {
+        return this.pooled;
     }
 
     /**
@@ -106,14 +169,22 @@ public class PayloadData {
 
     /**
      * @return the data
+     * @deprecated Use getByteBuf() for zero-copy access.
      */
+    @Deprecated
     public byte[] getData() {
+        if (byteBuf == null) {
+            return new byte[0];
+        }
         byte[] array = new byte[byteBuf.readableBytes()];
-        byteBuf.getBytes(0, array);
-        ReferenceCountUtil.release(byteBuf);
+        byteBuf.getBytes(byteBuf.readerIndex(), array);
         return array;
     }
 
+    /**
+     * Release the buffer. Should be called when done with this PayloadData.
+     * For pooled objects, use PayloadDataPool.release() instead.
+     */
     public void releaseBuffer() {
         ReferenceCountUtil.release(byteBuf);
     }
@@ -177,10 +248,13 @@ public class PayloadData {
      */
     @Override
     public String toString() {
-        byte[] array = new byte[byteBuf.readableBytes()];
-        byteBuf.getBytes(0, array);
+        if (byteBuf == null) {
+            return "PayloadData [null]";
+        }
+        byte[] array = new byte[Math.min(byteBuf.readableBytes(), 256)]; // Limit to 256 bytes for display
+        byteBuf.getBytes(byteBuf.readerIndex(), array);
 
-        StringBuffer sb = new StringBuffer();
+        StringBuilder sb = new StringBuilder();
         sb.append("PayloadData [dataLength=").append(dataLength).append(", complete=").append(complete).append(", unordered=")
             .append(unordered).append(", payloadProtocolId=").append(payloadProtocolId).append(", streamNumber=")
             .append(streamNumber).append(", data=\n").append(HexTools.dump(array, 0)).append("]");
