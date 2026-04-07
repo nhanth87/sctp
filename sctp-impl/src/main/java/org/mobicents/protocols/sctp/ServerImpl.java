@@ -28,15 +28,19 @@ import java.net.InetSocketAddress;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.spi.AbstractSelectableChannel;
-import java.util.List;
 
 import com.sun.nio.sctp.SctpSocketOption;
 import com.sun.nio.sctp.SctpStandardSocketOptions;
-import javolution.util.FastList;
-import javolution.xml.XMLFormat;
-import javolution.xml.stream.XMLStreamException;
+
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+
+import com.thoughtworks.xstream.annotations.XStreamAlias;
+import com.thoughtworks.xstream.annotations.XStreamAsAttribute;
+import com.thoughtworks.xstream.annotations.XStreamOmitField;
 
 import org.apache.log4j.Logger;
+import org.jctools.queues.MpscArrayQueue;
 import org.mobicents.protocols.api.Association;
 import org.mobicents.protocols.api.IpChannelType;
 import org.mobicents.protocols.api.Server;
@@ -48,47 +52,55 @@ import com.sun.nio.sctp.SctpServerChannel;
  * @author sergey vetyutnev
  *
  */
+@XStreamAlias("server")
 public class ServerImpl implements Server {
 
     private static final Logger logger = Logger.getLogger(ServerImpl.class.getName());
 
     private static final String COMMA = ", ";
-    private static final String NAME = "name";
-    private static final String HOST_ADDRESS = "hostAddress";
-    private static final String HOST_PORT = "hostPort";
-    private static final String IP_CHANNEL_TYPE = "ipChannelType";
 
-    private static final String ASSOCIATIONS = "associations";
-    private static final String EXTRA_HOST_ADDRESS = "extraHostAddress";
-	private static final String ACCEPT_ANONYMOUS_CONNECTIONS = "acceptAnonymousConnections";
-	private static final String MAX_CONCURRENT_CONNECTIONS_COUNT = "maxConcurrentConnectionsCount";
-
-	private static final String MAX_INPUT_STREAMS = "maxInputStreams";
-	private static final String MAX_OUTPUT_STREAMS = "maxOutputStreams";
-
-	private static final String STARTED = "started";
-
-    private static final String EXTRA_HOST_ADDRESSES_SIZE = "extraHostAddressesSize";
-
+    @XStreamAsAttribute
     private String name;
+    
+    @XStreamAsAttribute
     private String hostAddress;
+    
+    @XStreamAsAttribute
     private int hostPort;
+    
+    @XStreamAsAttribute
     private volatile boolean started = false;
+    
+    @XStreamAsAttribute
     private IpChannelType ipChannelType;
+    
+    @XStreamAsAttribute
     private boolean acceptAnonymousConnections;
+    
+    @XStreamAsAttribute
     private int maxConcurrentConnectionsCount;
+    
     private String[] extraHostAddresses;
 
+    @XStreamAsAttribute
     private int maxInputStreams; //32 - 019
+    
+    @XStreamAsAttribute
 	private int maxOutputStreams; //32 - 019
 
+    @XStreamOmitField
 	private ManagementImpl management = null;
 
-    protected FastList<String> associations = new FastList<String>();
-    protected FastList<Association> anonymAssociations = new FastList<Association>();
+    protected final CopyOnWriteArrayList<String> associations = new CopyOnWriteArrayList<>();
+    
+    @XStreamOmitField
+    protected final CopyOnWriteArrayList<Association> anonymAssociations = new CopyOnWriteArrayList<>();
 
     // The channel on which we'll accept connections
+    @XStreamOmitField
     private SctpServerChannel serverChannelSctp;
+    
+    @XStreamOmitField
     private ServerSocketChannel serverChannelTcp;
 
 	/**
@@ -134,9 +146,7 @@ public class ServerImpl implements Server {
     }
 
     protected void stop() throws Exception {
-        FastList<String> tempAssociations = associations;
-        for (FastList.Node<String> n = tempAssociations.head(), end = tempAssociations.tail(); (n = n.getNext()) != end;) {
-            String assocName = n.getValue();
+        for (String assocName : associations) {
             Association associationTemp = this.management.getAssociation(assocName);
             if (associationTemp.isStarted()) {
                 throw new Exception(String.format("Stop all the associations first. Association=%s is still started",
@@ -144,13 +154,11 @@ public class ServerImpl implements Server {
             }
         }
 
-        synchronized (this.anonymAssociations) {
-            // stopping all anonymous associations
-            for (Association ass : this.anonymAssociations) {
-                ass.stopAnonymousAssociation();
-            }
-            this.anonymAssociations.clear();
+        // stopping all anonymous associations
+        for (Association ass : this.anonymAssociations) {
+            ass.stopAnonymousAssociation();
         }
+        this.anonymAssociations.clear();
 
         if (this.getIpChannel() != null) {
             try {
@@ -178,7 +186,7 @@ public class ServerImpl implements Server {
         // accepting new connections
         // this.serverChannel.register(socketSelector, SelectionKey.OP_ACCEPT);
 
-        FastList<ChangeRequest> pendingChanges = this.management.getPendingChanges();
+        MpscArrayQueue<ChangeRequest> pendingChanges = this.management.getPendingChanges();
         synchronized (pendingChanges) {
 
             // Indicate we want the interest ops set changed
@@ -252,7 +260,7 @@ public class ServerImpl implements Server {
     }
 
     public List<Association> getAnonymAssociations() {
-        return this.anonymAssociations.unmodifiable();
+        return this.anonymAssociations;
     }
 
     public int getMaxInputStreams() {
@@ -332,7 +340,7 @@ public class ServerImpl implements Server {
      * @return the associations
      */
     public List<String> getAssociations() {
-        return associations.unmodifiable();
+        return associations;
     }
 
     @Override
@@ -346,8 +354,8 @@ public class ServerImpl implements Server {
 			.append(", maxInputStreams=").append(maxInputStreams).append(", maxOutputStreams=").append(maxOutputStreams)
 			.append(", associations(anonymous does not included)=[");
 
-		for (FastList.Node<String> n = this.associations.head(), end = this.associations.tail(); (n = n.getNext()) != end; ) {
-			sb.append(n.getValue());
+		for (String association : this.associations) {
+			sb.append(association);
 			sb.append(", ");
 		}
 
@@ -365,61 +373,4 @@ public class ServerImpl implements Server {
 
         return sb.toString();
     }
-
-    /**
-     * XML Serialization/Deserialization
-     */
-    protected static final XMLFormat<ServerImpl> SERVER_XML = new XMLFormat<ServerImpl>(ServerImpl.class) {
-
-        @SuppressWarnings("unchecked")
-        @Override
-        public void read(javolution.xml.XMLFormat.InputElement xml, ServerImpl server) throws XMLStreamException {
-            server.name = xml.getAttribute(NAME, "");
-            server.started = xml.getAttribute(STARTED, false);
-            server.hostAddress = xml.getAttribute(HOST_ADDRESS, "");
-            server.hostPort = xml.getAttribute(HOST_PORT, 0);
-            server.ipChannelType = IpChannelType.getInstance(xml.getAttribute(IP_CHANNEL_TYPE,
-                IpChannelType.SCTP.getCode()));
-            if (server.ipChannelType == null)
-                throw new XMLStreamException("Bad value for server.ipChannelType");
-
-            server.acceptAnonymousConnections = xml.getAttribute(ACCEPT_ANONYMOUS_CONNECTIONS, false);
-			server.maxConcurrentConnectionsCount = xml.getAttribute(MAX_CONCURRENT_CONNECTIONS_COUNT, 0);
-
-            server.maxInputStreams = xml.getAttribute(MAX_INPUT_STREAMS, 32);
-            server.maxOutputStreams = xml.getAttribute(MAX_OUTPUT_STREAMS, 32);
-
-            int extraHostAddressesSize = xml.getAttribute(EXTRA_HOST_ADDRESSES_SIZE, 0);
-            server.extraHostAddresses = new String[extraHostAddressesSize];
-
-            for(int i=0;i<extraHostAddressesSize;i++){
-                server.extraHostAddresses[i] = xml.get(EXTRA_HOST_ADDRESS, String.class);
-            }
-
-            server.associations = xml.get(ASSOCIATIONS, FastList.class);
-        }
-
-        @Override
-        public void write(ServerImpl server, javolution.xml.XMLFormat.OutputElement xml) throws XMLStreamException {
-            xml.setAttribute(NAME, server.name);
-            xml.setAttribute(STARTED, server.started);
-            xml.setAttribute(HOST_ADDRESS, server.hostAddress);
-            xml.setAttribute(HOST_PORT, server.hostPort);
-            xml.setAttribute(IP_CHANNEL_TYPE, server.ipChannelType.getCode());
-			xml.setAttribute(ACCEPT_ANONYMOUS_CONNECTIONS, server.acceptAnonymousConnections);
-			xml.setAttribute(MAX_CONCURRENT_CONNECTIONS_COUNT, server.maxConcurrentConnectionsCount);
-
-			xml.setAttribute(MAX_INPUT_STREAMS, server.maxInputStreams);
-			xml.setAttribute(MAX_OUTPUT_STREAMS, server.maxOutputStreams);
-
-			xml.setAttribute(EXTRA_HOST_ADDRESSES_SIZE,
-				server.extraHostAddresses != null ? server.extraHostAddresses.length : 0);
-			if (server.extraHostAddresses != null) {
-				for (String s : server.extraHostAddresses) {
-					xml.add(s, EXTRA_HOST_ADDRESS, String.class);
-				}
-			}
-			xml.add(server.associations, ASSOCIATIONS, FastList.class);
-		}
-	};
 }

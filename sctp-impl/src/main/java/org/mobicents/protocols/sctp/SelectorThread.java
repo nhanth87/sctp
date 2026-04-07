@@ -32,15 +32,15 @@ import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.nio.channels.spi.AbstractSelectableChannel;
-import java.util.HashSet;
 import java.util.Iterator;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import com.sun.nio.sctp.SctpStandardSocketOptions;
-import javolution.util.FastList;
-import javolution.util.FastMap;
 
 import org.apache.log4j.Logger;
+import org.jctools.queues.MpscArrayQueue;
 import org.mobicents.protocols.api.Association;
 import org.mobicents.protocols.api.IpChannelType;
 import org.mobicents.protocols.api.Server;
@@ -96,7 +96,7 @@ public class SelectorThread implements Runnable {
 		}
 		while (this.started) {
 			try {
-				FastList<ChangeRequest> pendingChanges = this.management.getPendingChanges();
+				MpscArrayQueue<ChangeRequest> pendingChanges = this.management.getPendingChanges();
 
 				// Process any pending changes
 				synchronized (pendingChanges) {
@@ -193,7 +193,8 @@ public class SelectorThread implements Runnable {
 		// Accept the connection and make it non-blocking
 		SctpChannel socketChannel = serverSocketChannel.accept();
 
-		Set<SocketAddress> peerAddresses = socketChannel.getRemoteAddresses();
+		Set<SocketAddress> peerAddresses = ConcurrentHashMap.newKeySet();
+		peerAddresses.addAll(socketChannel.getRemoteAddresses());
 
 		this.doAccept(serverSocketChannel, socketChannel, peerAddresses);
 	}
@@ -207,7 +208,7 @@ public class SelectorThread implements Runnable {
 		// Accept the connection and make it non-blocking
 		SocketChannel socketChannel = serverSocketChannel.accept();
 
-		Set<SocketAddress> peerAddresses = new HashSet<SocketAddress>();
+		Set<SocketAddress> peerAddresses = ConcurrentHashMap.newKeySet();
 		peerAddresses.add(socketChannel.getRemoteAddress());
 
 		this.doAccept(serverSocketChannel, socketChannel, peerAddresses);
@@ -238,10 +239,9 @@ public class SelectorThread implements Runnable {
 					// Iterate through all corresponding associate to
 					// check if incoming connection request matches with any provisioned
 					// ip:port
-					FastMap<String, Association> associations = this.management.associations;
-
-					for (FastMap.Entry<String, Association> n = associations.head(), end = associations.tail(); (n = n.getNext()) != end && !provisioned;) {
-						AssociationImpl association = (AssociationImpl)n.getValue();
+					for (Map.Entry<String, Association> entry : this.management.associations.entrySet()) {
+						if (provisioned) break;
+						AssociationImpl association = (AssociationImpl)entry.getValue();
 						
 						// check if an association binds to the found server
 						if (srv.getName().equals(association.getServerName())) {

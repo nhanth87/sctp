@@ -43,9 +43,11 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
 
-import javolution.util.FastList;
-import javolution.xml.XMLFormat;
-import javolution.xml.stream.XMLStreamException;
+import org.jctools.queues.MpscArrayQueue;
+
+import com.thoughtworks.xstream.annotations.XStreamAlias;
+import com.thoughtworks.xstream.annotations.XStreamAsAttribute;
+import com.thoughtworks.xstream.annotations.XStreamOmitField;
 
 import org.apache.log4j.Logger;
 import org.mobicents.protocols.api.Association;
@@ -62,37 +64,45 @@ import com.sun.nio.sctp.SctpChannel;
  * @author amit bhayani
  *
  */
+@XStreamAlias("association")
 public class AssociationImpl implements Association {
 
     protected static final Logger logger = Logger.getLogger(AssociationImpl.class.getName());
 
-    private static final String NAME = "name";
-    private static final String SERVER_NAME = "serverName";
-    private static final String HOST_ADDRESS = "hostAddress";
-    private static final String HOST_PORT = "hostPort";
-
-    private static final String PEER_ADDRESS = "peerAddress";
-    private static final String PEER_PORT = "peerPort";
-
-    private static final String ASSOCIATION_TYPE = "associationType";
-    private static final String IP_CHANNEL_TYPE = "ipChannelType";
-    private static final String EXTRA_HOST_ADDRESS = "extraHostAddress";
-    private static final String EXTRA_HOST_ADDRESSES_SIZE = "extraHostAddressesSize";
-
+    @XStreamAsAttribute
     private String hostAddress;
+    
+    @XStreamAsAttribute
     private int hostPort;
+    
+    @XStreamAsAttribute
     private String peerAddress;
+    
+    @XStreamAsAttribute
     private int peerPort;
+    
+    @XStreamAsAttribute
     private String serverName;
+    
+    @XStreamAsAttribute
     private String name;
+    
+    @XStreamAsAttribute
     private IpChannelType ipChannelType;
+    
     private String[] extraHostAddresses;
+    private String[] extraPeerHostAddresses;
+    
+    @XStreamOmitField
     private ServerImpl server; // this is filled only for anonymous Associations
 
+    @XStreamAsAttribute
     private AssociationType type;
 
+    @XStreamOmitField
     private AssociationListener associationListener = null;
 
+    @XStreamOmitField
     protected final AssociationHandler associationHandler = new AssociationHandler();
 
     /**
@@ -101,25 +111,37 @@ public class AssociationImpl implements Association {
      * address changes, this variable is set to new value so new messages are
      * now sent to changed peer address
      */
+    @XStreamOmitField
     protected volatile SocketAddress peerSocketAddress = null;
 
     // Is the Association been started by management?
+    @XStreamOmitField
     private volatile boolean started = false;
+    
     // Is the Association up (connection is established)
+    @XStreamOmitField
     protected volatile boolean up = false;
 
+    @XStreamOmitField
     private int workerThreadTable[] = null;
 
+    @XStreamOmitField
     private ConcurrentLinkedQueue<PayloadData> txQueue = new ConcurrentLinkedQueue<PayloadData>();
 
+    @XStreamOmitField
     private ManagementImpl management;
 
+    @XStreamOmitField
     private SctpChannel socketChannelSctp;
+    
+    @XStreamOmitField
     private SocketChannel socketChannelTcp;
 
     // The buffer into which we'll read data when it's available
+    @XStreamOmitField
     private ByteBuffer rxBuffer;
 
+    @XStreamOmitField
     private volatile MessageInfo msgInfo;
 
     /**
@@ -127,6 +149,7 @@ public class AssociationImpl implements Association {
      * in Management, socket will be closed and request to reopen the socket
      * will be initiated
      */
+    @XStreamOmitField
     private volatile int ioErrors = 0;
 
     public AssociationImpl() {
@@ -248,7 +271,7 @@ public class AssociationImpl implements Association {
         }
 
         if (this.getSocketChannel() != null && this.getSocketChannel().isOpen()) {
-            FastList<ChangeRequest> pendingChanges = this.management.getPendingChanges();
+            MpscArrayQueue<ChangeRequest> pendingChanges = this.management.getPendingChanges();
             synchronized (pendingChanges) {
                 // Indicate we want the interest ops set changed
                 pendingChanges.add(new ChangeRequest(getSocketChannel(), this, ChangeRequest.CLOSE, -1));
@@ -464,6 +487,15 @@ public class AssociationImpl implements Association {
         this.extraHostAddresses = extraHostAddresses;
     }
 
+    @Override
+    public String[] getExtraPeerHostAddresses() {
+        return extraPeerHostAddresses;
+    }
+
+    public void setExtraPeerHostAddresses(String[] extraPeerHostAddresses) {
+        this.extraPeerHostAddresses = extraPeerHostAddresses;
+    }
+
     /**
      * @param management the management to set
      */
@@ -492,11 +524,11 @@ public class AssociationImpl implements Association {
     public void send(PayloadData payloadData) throws Exception {
         this.checkSocketIsOpen();
 
-        FastList<ChangeRequest> pendingChanges = this.management.getPendingChanges();
+        MpscArrayQueue<ChangeRequest> pendingChanges = this.management.getPendingChanges();
         synchronized (pendingChanges) {
 
 			// Indicate we want the interest ops set changed
-			pendingChanges.add(new ChangeRequest(this.getSocketChannel(), this, ChangeRequest.CHANGEOPS,
+			pendingChanges.relaxedOffer(new ChangeRequest(this.getSocketChannel(), this, ChangeRequest.CHANGEOPS,
 				SelectionKey.OP_WRITE));
 
             // And queue the data we want written
@@ -551,9 +583,9 @@ public class AssociationImpl implements Association {
 			} else {
 				Worker worker = new Worker(this, this.associationListener, payload);
 
-//				System.out.println("payload.getStreamNumber()=" + payload.getStreamNumber()
-//						+ " this.workerThreadTable[payload.getStreamNumber()]"
-//						+ this.workerThreadTable[payload.getStreamNumber()]);
+	//				System.out.println("payload.getStreamNumber()=" + payload.getStreamNumber()
+	//						+ " this.workerThreadTable[payload.getStreamNumber()]"
+	//						+ this.workerThreadTable[payload.getStreamNumber()]);
 
                 ExecutorService executorService = this.management.getExecutorService(this.workerThreadTable[payload
                     .getStreamNumber()]);
@@ -768,7 +800,7 @@ public class AssociationImpl implements Association {
     protected void scheduleConnect() {
         if (this.getAssociationType() == AssociationType.CLIENT) {
             // If Association is of Client type, restart the connection procedure
-            FastList<ChangeRequest> pendingChanges = this.management.getPendingChanges();
+            MpscArrayQueue<ChangeRequest> pendingChanges = this.management.getPendingChanges();
             synchronized (pendingChanges) {
                 pendingChanges.add(new ChangeRequest(this, ChangeRequest.CONNECT, System.currentTimeMillis()
                     + this.management.getConnectDelay()));
@@ -812,9 +844,9 @@ public class AssociationImpl implements Association {
         // selecting thread. As part of the registration we'll register
         // an interest in connection events. These are raised when a channel
         // is ready to complete connection establishment.
-        FastList<ChangeRequest> pendingChanges = this.management.getPendingChanges();
+        MpscArrayQueue<ChangeRequest> pendingChanges = this.management.getPendingChanges();
         synchronized (pendingChanges) {
-            pendingChanges.add(new ChangeRequest(this.getSocketChannel(), this, ChangeRequest.REGISTER,
+            pendingChanges.relaxedOffer(new ChangeRequest(this.getSocketChannel(), this, ChangeRequest.REGISTER,
                 SelectionKey.OP_CONNECT));
         }
 
@@ -908,61 +940,4 @@ public class AssociationImpl implements Association {
 
         return sb.toString();
     }
-
-    /**
-     * XML Serialization/Deserialization
-     */
-    protected static final XMLFormat<AssociationImpl> ASSOCIATION_XML = new XMLFormat<AssociationImpl>(
-        AssociationImpl.class) {
-
-        @SuppressWarnings("unchecked")
-        @Override
-        public void read(javolution.xml.XMLFormat.InputElement xml, AssociationImpl association)
-            throws XMLStreamException {
-            association.name = xml.getAttribute(NAME, "");
-            association.type = AssociationType.getAssociationType(xml.getAttribute(ASSOCIATION_TYPE, ""));
-            association.hostAddress = xml.getAttribute(HOST_ADDRESS, "");
-            association.hostPort = xml.getAttribute(HOST_PORT, 0);
-
-            association.peerAddress = xml.getAttribute(PEER_ADDRESS, "");
-            association.peerPort = xml.getAttribute(PEER_PORT, 0);
-
-            association.serverName = xml.getAttribute(SERVER_NAME, "");
-            association.ipChannelType = IpChannelType.getInstance(xml.getAttribute(IP_CHANNEL_TYPE,
-                IpChannelType.SCTP.getCode()));
-            if (association.ipChannelType == null)
-                association.ipChannelType = IpChannelType.SCTP;
-
-            int extraHostAddressesSize = xml.getAttribute(EXTRA_HOST_ADDRESSES_SIZE, 0);
-            association.extraHostAddresses = new String[extraHostAddressesSize];
-
-            for (int i = 0; i < extraHostAddressesSize; i++) {
-                association.extraHostAddresses[i] = xml.get(EXTRA_HOST_ADDRESS, String.class);
-            }
-
-        }
-
-        @Override
-        public void write(AssociationImpl association, javolution.xml.XMLFormat.OutputElement xml)
-            throws XMLStreamException {
-            xml.setAttribute(NAME, association.name);
-            xml.setAttribute(ASSOCIATION_TYPE, association.type.getType());
-            xml.setAttribute(HOST_ADDRESS, association.hostAddress);
-            xml.setAttribute(HOST_PORT, association.hostPort);
-
-            xml.setAttribute(PEER_ADDRESS, association.peerAddress);
-            xml.setAttribute(PEER_PORT, association.peerPort);
-
-            xml.setAttribute(SERVER_NAME, association.serverName);
-            xml.setAttribute(IP_CHANNEL_TYPE, association.ipChannelType.getCode());
-
-            xml.setAttribute(EXTRA_HOST_ADDRESSES_SIZE,
-                association.extraHostAddresses != null ? association.extraHostAddresses.length : 0);
-            if (association.extraHostAddresses != null) {
-                for (String s : association.extraHostAddresses) {
-                    xml.add(s, EXTRA_HOST_ADDRESS, String.class);
-                }
-            }
-        }
-    };
 }

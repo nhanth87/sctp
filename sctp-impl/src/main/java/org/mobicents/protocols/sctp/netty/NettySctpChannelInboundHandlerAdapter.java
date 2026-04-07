@@ -27,7 +27,9 @@ import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.sctp.SctpMessage;
+import io.netty.util.ReferenceCountUtil;
 
+import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 import org.apache.log4j.Priority;
 import org.mobicents.protocols.api.IpChannelType;
@@ -66,7 +68,7 @@ public class NettySctpChannelInboundHandlerAdapter extends ChannelInboundHandler
 
     @Override
     public void channelInactive(ChannelHandlerContext ctx) {
-        if (logger.isDebugEnabled()) {
+        if (logger.isEnabledFor(Level.DEBUG)) {
             logger.debug(String.format("channelInactive event: association=%s", this.association));
         }
 
@@ -76,7 +78,7 @@ public class NettySctpChannelInboundHandlerAdapter extends ChannelInboundHandler
 
     @Override
     public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
-        if (logger.isDebugEnabled()) {
+        if (logger.isEnabledFor(Level.DEBUG)) {
             logger.debug(String.format("userEventTriggered event: association=%s \nevent=%s", this.association, evt));
         }
 
@@ -91,7 +93,7 @@ public class NettySctpChannelInboundHandlerAdapter extends ChannelInboundHandler
                         this.maxInboundStreams = not.association().maxInboundStreams();
                     }
 
-                    if (logger.isInfoEnabled()) {
+                    if (logger.isEnabledFor(Level.INFO)) {
                         logger.info(String.format(
                                 "New association setup for Association=%s with %d outbound streams, and %d inbound streams.\n",
                                 association.getName(), this.maxOutboundStreams, this.maxInboundStreams));
@@ -123,7 +125,7 @@ public class NettySctpChannelInboundHandlerAdapter extends ChannelInboundHandler
                     }
                     break;
                 case SHUTDOWN:
-                    if (logger.isInfoEnabled()) {
+                    if (logger.isEnabledFor(Level.INFO)) {
                         logger.info(String.format("Shutdown for Association=%s", association.getName()));
                     }
 //                    try {
@@ -143,9 +145,47 @@ public class NettySctpChannelInboundHandlerAdapter extends ChannelInboundHandler
         if (evt instanceof PeerAddressChangeNotification) {
             PeerAddressChangeNotification notification = (PeerAddressChangeNotification) evt;
 
-            if (logger.isEnabledFor(Priority.WARN)) {
+            if (logger.isEnabledFor(Level.WARN)) {
                 logger.warn(String.format("Peer Address changed to=%s for Association=%s", notification.address(),
                         association.getName()));
+            }
+
+            // Notify listener about peer address change for multihoming support
+            String changeType = notification.event().name();
+            String peerAddress = notification.address().toString();
+            try {
+                association.getAssociationListener().onPeerAddressChanged(association, peerAddress, changeType);
+            } catch (Exception e) {
+                logger.error(String.format("Exception while calling onPeerAddressChanged for Association=%s",
+                        association.getName()), e);
+            }
+
+            // Handle specific address change events
+            switch (notification.event()) {
+                case ADDR_MADE_PRIMARY:
+                    if (logger.isEnabledFor(Level.INFO)) {
+                        logger.info(String.format("Peer address=%s is now primary for Association=%s", 
+                                peerAddress, association.getName()));
+                    }
+                    break;
+                case ADDR_UNREACHABLE:
+                    if (logger.isEnabledFor(Level.WARN)) {
+                        logger.warn(String.format("Peer address=%s is unreachable for Association=%s", 
+                                peerAddress, association.getName()));
+                    }
+                    break;
+                case ADDR_AVAILABLE:
+                    if (logger.isEnabledFor(Level.INFO)) {
+                        logger.info(String.format("Peer address=%s is now available for Association=%s", 
+                                peerAddress, association.getName()));
+                    }
+                    break;
+                default:
+                    if (logger.isEnabledFor(Level.DEBUG)) {
+                        logger.debug(String.format("Peer address event=%s for address=%s, Association=%s", 
+                                notification.event(), peerAddress, association.getName()));
+                    }
+                    break;
             }
 
         } else if (evt instanceof SendFailedNotification) {
@@ -156,7 +196,7 @@ public class NettySctpChannelInboundHandlerAdapter extends ChannelInboundHandler
         } else if (evt instanceof ShutdownNotification) {
             ShutdownNotification notification = (ShutdownNotification) evt;
 
-            if (logger.isInfoEnabled()) {
+            if (logger.isEnabledFor(Level.INFO)) {
                 logger.info(String.format("Association=%s SHUTDOWN", association.getName()));
             }
 
@@ -176,40 +216,74 @@ public class NettySctpChannelInboundHandlerAdapter extends ChannelInboundHandler
 
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) {
-        // try {
-        PayloadData payload;
-        if (this.association.getIpChannelType() == IpChannelType.SCTP) {
-            SctpMessage sctpMessage = (SctpMessage) msg;
-            ByteBuf byteBuf = sctpMessage.content();
-            payload = new PayloadData(byteBuf.readableBytes(), byteBuf, sctpMessage.isComplete(), sctpMessage.isUnordered(),
-                    sctpMessage.protocolIdentifier(), sctpMessage.streamIdentifier());
-        } else {
-            ByteBuf byteBuf = (ByteBuf) msg;
-            payload = new PayloadData(byteBuf.readableBytes(), byteBuf, true, false, 0, 0);
-        }
+        try {
+            PayloadData payload;
+            if (this.association.getIpChannelType() == IpChannelType.SCTP) {
+                SctpMessage sctpMessage = (SctpMessage) msg;
+                ByteBuf byteBuf = sctpMessage.content();
+                // Retain the ByteBuf as it will be passed to the association layer
+                byteBuf.retain();
+                payload = new PayloadData(byteBuf.readableBytes(), byteBuf, sctpMessage.isComplete(), sctpMessage.isUnordered(),
+                        sctpMessage.protocolIdentifier(), sctpMessage.streamIdentifier());
+            } else {
+                ByteBuf byteBuf = (ByteBuf) msg;
+                // Retain the ByteBuf as it will be passed to the association layer
+                byteBuf.retain();
+                payload = new PayloadData(byteBuf.readableBytes(), byteBuf, true, false, 0, 0);
+            }
 
-        if (logger.isDebugEnabled()) {
-            logger.debug(String.format("Rx : Ass=%s %s", this.association.getName(), payload));
-        }
+            if (logger.isEnabledFor(Level.DEBUG)) {
+                logger.debug(String.format("Rx : Ass=%s %s", this.association.getName(), payload));
+            }
 
-        this.association.read(payload);
-        // } finally {
-        // ReferenceCountUtil.release(msg);
-        // }
+            this.association.read(payload);
+        } finally {
+            // Always release the original message to prevent memory leak
+            ReferenceCountUtil.release(msg);
+        }
     }
 
     protected void writeAndFlush(Object message) {
         Channel ch = this.channel;
-        if (ch != null) {
-            ChannelFuture future = ch.writeAndFlush(message);
-
-            long curMillisec = System.currentTimeMillis();
-            long secPart = curMillisec / 500;
-            if (lastCongestionMonitorSecondPart < secPart) {
-                lastCongestionMonitorSecondPart = secPart;
-                CongestionMonitor congestionMonitor = new CongestionMonitor();
-                future.addListener(congestionMonitor);
+        if (ch == null || !ch.isActive()) {
+            // Channel is not available or inactive, release the message to prevent memory leak
+            ReferenceCountUtil.release(message);
+            if (logger.isEnabledFor(Level.DEBUG)) {
+                logger.debug(String.format("Channel not available or inactive for Association=%s, message dropped", 
+                        this.association.getName()));
             }
+            return;
+        }
+        
+        // Check writability for backpressure handling
+        if (!ch.isWritable()) {
+            // Channel is congested, log warning but still try to write
+            // The write will be queued in Netty's channel outbound buffer
+            if (logger.isEnabledFor(Level.WARN)) {
+                logger.warn(String.format("Channel is congested (not writable) for Association=%s", 
+                        this.association.getName()));
+            }
+        }
+        
+        ChannelFuture future = ch.writeAndFlush(message);
+        
+        // Add listener to handle write failures
+        future.addListener(new ChannelFutureListener() {
+            @Override
+            public void operationComplete(ChannelFuture future) throws Exception {
+                if (!future.isSuccess()) {
+                    logger.error(String.format("Failed to write message for Association=%s", 
+                            association.getName()), future.cause());
+                }
+            }
+        });
+
+        long curMillisec = System.currentTimeMillis();
+        long secPart = curMillisec / 500;
+        if (lastCongestionMonitorSecondPart < secPart) {
+            lastCongestionMonitorSecondPart = secPart;
+            CongestionMonitor congestionMonitor = new CongestionMonitor();
+            future.addListener(congestionMonitor);
         }
      }
 
@@ -253,3 +327,9 @@ public class NettySctpChannelInboundHandlerAdapter extends ChannelInboundHandler
     }
 
 }
+
+
+
+
+
+

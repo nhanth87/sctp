@@ -34,11 +34,13 @@ import io.netty.handler.logging.LoggingHandler;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.List;
 
-import javolution.util.FastList;
-import javolution.xml.XMLFormat;
-import javolution.xml.stream.XMLStreamException;
+import com.thoughtworks.xstream.annotations.XStreamAlias;
+import com.thoughtworks.xstream.annotations.XStreamAsAttribute;
+import com.thoughtworks.xstream.annotations.XStreamOmitField;
 
 import org.apache.log4j.Logger;
 import org.mobicents.protocols.api.Association;
@@ -49,42 +51,50 @@ import org.mobicents.protocols.api.Server;
  * @author <a href="mailto:amit.bhayani@telestax.com">Amit Bhayani</a>
  * 
  */
+@XStreamAlias("server")
 public class NettyServerImpl implements Server {
 
     private static final Logger logger = Logger.getLogger(NettyServerImpl.class.getName());
 
     private static final String COMMA = ", ";
-    private static final String NAME = "name";
-    private static final String HOST_ADDRESS = "hostAddress";
-    private static final String HOST_PORT = "hostPort";
-    private static final String IP_CHANNEL_TYPE = "ipChannelType";
 
-    private static final String ASSOCIATIONS = "associations";
-    private static final String EXTRA_HOST_ADDRESS = "extraHostAddress";
-    private static final String ACCEPT_ANONYMOUS_CONNECTIONS = "acceptAnonymousConnections";
-    private static final String MAX_CONCURRENT_CONNECTIONS_COUNT = "maxConcurrentConnectionsCount";
-
-    private static final String STARTED = "started";
-
-    private static final String EXTRA_HOST_ADDRESSES_SIZE = "extraHostAddressesSize";
-
+    @XStreamAsAttribute
     private String name;
+    
+    @XStreamAsAttribute
     private String hostAddress;
+    
+    @XStreamAsAttribute
     private int hostport;
+    
+    @XStreamAsAttribute
     private volatile boolean started = false;
+    
+    @XStreamAsAttribute
     private IpChannelType ipChannelType;
+    
+    @XStreamAsAttribute
     private boolean acceptAnonymousConnections;
+    
+    @XStreamAsAttribute
     private int maxConcurrentConnectionsCount;
+    
     private String[] extraHostAddresses;
 
+    @XStreamOmitField
     private NettySctpManagementImpl management = null;
 
-    protected FastList<String> associations = new FastList<String>();
-    protected FastList<Association> anonymAssociations = new FastList<Association>();
+    protected final CopyOnWriteArrayList<String> associations = new CopyOnWriteArrayList<String>();
+    
+    @XStreamOmitField
+    protected final CopyOnWriteArrayList<Association> anonymAssociations = new CopyOnWriteArrayList<Association>();
 
     // Netty declarations
     // The channel on which we'll accept connections
+    @XStreamOmitField
     private SctpServerChannel serverChannelSctp;
+    
+    @XStreamOmitField
     private NioServerSocketChannel serverChannelTcp;
 
     /**
@@ -234,7 +244,7 @@ public class NettyServerImpl implements Server {
      */
     @Override
     public List<String> getAssociations() {
-        return this.associations.unmodifiable();
+        return this.associations;
     }
 
     /*
@@ -244,7 +254,33 @@ public class NettyServerImpl implements Server {
      */
     @Override
     public List<Association> getAnonymAssociations() {
-        return this.anonymAssociations.unmodifiable();
+        return this.anonymAssociations;
+    }
+
+    /**
+     * Modify server properties.
+     */
+    protected void modifyServer(String hostAddress, Integer port, IpChannelType ipChannelType, 
+                                Boolean acceptAnonymousConnections, Integer maxConcurrentConnectionsCount, 
+                                String[] extraHostAddresses) {
+        if (hostAddress != null) {
+            this.hostAddress = hostAddress;
+        }
+        if (port != null) {
+            this.hostport = port;
+        }
+        if (ipChannelType != null) {
+            this.ipChannelType = ipChannelType;
+        }
+        if (acceptAnonymousConnections != null) {
+            this.acceptAnonymousConnections = acceptAnonymousConnections;
+        }
+        if (maxConcurrentConnectionsCount != null) {
+            this.maxConcurrentConnectionsCount = maxConcurrentConnectionsCount;
+        }
+        if (extraHostAddresses != null) {
+            this.extraHostAddresses = extraHostAddresses;
+        }
     }
 
     protected ServerChannel getIpChannel() {
@@ -271,9 +307,7 @@ public class NettyServerImpl implements Server {
     }
 
     protected void stop() throws Exception {
-        FastList<String> tempAssociations = associations;
-        for (FastList.Node<String> n = tempAssociations.head(), end = tempAssociations.tail(); (n = n.getNext()) != end;) {
-            String assocName = n.getValue();
+        for (String assocName : associations) {
             Association associationTemp = this.management.getAssociation(assocName);
             if (associationTemp.isStarted()) {
                 throw new Exception(String.format("Stop all the associations first. Association=%s is still started",
@@ -281,13 +315,11 @@ public class NettyServerImpl implements Server {
             }
         }
 
-        synchronized (this.anonymAssociations) {
-            // stopping all anonymous associations
-            for (Association ass : this.anonymAssociations) {
-                ass.stopAnonymousAssociation();
-            }
-            this.anonymAssociations.clear();
+        // stopping all anonymous associations
+        for (Association ass : this.anonymAssociations) {
+            ass.stopAnonymousAssociation();
         }
+        this.anonymAssociations.clear();
 
         this.started = false;
 
@@ -373,8 +405,8 @@ public class NettyServerImpl implements Server {
                 .append(this.acceptAnonymousConnections).append(", maxConcurrentConnectionsCount=").append(this.maxConcurrentConnectionsCount)
                 .append(", associations(anonymous does not included)=[");
 
-        for (FastList.Node<String> n = this.associations.head(), end = this.associations.tail(); (n = n.getNext()) != end;) {
-            sb.append(n.getValue());
+        for (String assocName : this.associations) {
+            sb.append(assocName);
             sb.append(", ");
         }
 
@@ -392,53 +424,4 @@ public class NettyServerImpl implements Server {
 
         return sb.toString();
     }
-
-    /**
-     * XML Serialization/Deserialization
-     */
-    protected static final XMLFormat<NettyServerImpl> SERVER_XML = new XMLFormat<NettyServerImpl>(NettyServerImpl.class) {
-
-        @SuppressWarnings("unchecked")
-        @Override
-        public void read(javolution.xml.XMLFormat.InputElement xml, NettyServerImpl server) throws XMLStreamException {
-            server.name = xml.getAttribute(NAME, "");
-            server.started = xml.getAttribute(STARTED, false);
-            server.hostAddress = xml.getAttribute(HOST_ADDRESS, "");
-            server.hostport = xml.getAttribute(HOST_PORT, 0);
-            server.ipChannelType = IpChannelType.getInstance(xml.getAttribute(IP_CHANNEL_TYPE, IpChannelType.SCTP.getCode()));
-            if (server.ipChannelType == null)
-                throw new XMLStreamException("Bad value for server.ipChannelType");
-
-            server.acceptAnonymousConnections = xml.getAttribute(ACCEPT_ANONYMOUS_CONNECTIONS, false);
-            server.maxConcurrentConnectionsCount = xml.getAttribute(MAX_CONCURRENT_CONNECTIONS_COUNT, 0);
-
-            int extraHostAddressesSize = xml.getAttribute(EXTRA_HOST_ADDRESSES_SIZE, 0);
-            server.extraHostAddresses = new String[extraHostAddressesSize];
-
-            for (int i = 0; i < extraHostAddressesSize; i++) {
-                server.extraHostAddresses[i] = xml.get(EXTRA_HOST_ADDRESS, String.class);
-            }
-
-            server.associations = xml.get(ASSOCIATIONS, FastList.class);
-        }
-
-        @Override
-        public void write(NettyServerImpl server, javolution.xml.XMLFormat.OutputElement xml) throws XMLStreamException {
-            xml.setAttribute(NAME, server.name);
-            xml.setAttribute(STARTED, server.started);
-            xml.setAttribute(HOST_ADDRESS, server.hostAddress);
-            xml.setAttribute(HOST_PORT, server.hostport);
-            xml.setAttribute(IP_CHANNEL_TYPE, server.ipChannelType.getCode());
-            xml.setAttribute(ACCEPT_ANONYMOUS_CONNECTIONS, server.acceptAnonymousConnections);
-            xml.setAttribute(MAX_CONCURRENT_CONNECTIONS_COUNT, server.maxConcurrentConnectionsCount);
-
-            xml.setAttribute(EXTRA_HOST_ADDRESSES_SIZE, server.extraHostAddresses != null ? server.extraHostAddresses.length : 0);
-            if (server.extraHostAddresses != null) {
-                for (String s : server.extraHostAddresses) {
-                    xml.add(s, EXTRA_HOST_ADDRESS, String.class);
-                }
-            }
-            xml.add(server.associations, ASSOCIATIONS, FastList.class);
-        }
-    };
 }

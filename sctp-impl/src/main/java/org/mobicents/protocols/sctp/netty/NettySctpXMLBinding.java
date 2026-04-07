@@ -19,48 +19,43 @@
  */
 package org.mobicents.protocols.sctp.netty;
 
-import java.util.Iterator;
-import java.util.Map;
-
-import javolution.xml.XMLBinding;
-import javolution.xml.XMLFormat;
-import javolution.xml.stream.XMLStreamException;
+import com.thoughtworks.xstream.XStream;
+import com.thoughtworks.xstream.io.xml.DomDriver;
 
 /**
  * @author <a href="mailto:amit.bhayani@telestax.com">Amit Bhayani</a>
  * 
  */
-public class NettySctpXMLBinding extends XMLBinding {
+public class NettySctpXMLBinding {
 
-	protected static final XMLFormat<NettyAssociationMap> ASSOCIATION_MAP = new XMLFormat<NettyAssociationMap>(NettyAssociationMap.class) {
+    private static final XStream xstream;
 
-		@Override
-		public void write(NettyAssociationMap obj, javolution.xml.XMLFormat.OutputElement xml) throws XMLStreamException {
-			final Map map = (Map) obj;
+    static {
+        xstream = new XStream(new DomDriver());
+        
+        // Configure aliases
+        xstream.alias("server", NettyServerImpl.class);
+        xstream.alias("association", NettyAssociationImpl.class);
+        xstream.alias("associationMap", NettyAssociationMap.class);
+        
+        // Process annotations
+        xstream.processAnnotations(NettyAssociationImpl.class);
+        xstream.processAnnotations(NettyServerImpl.class);
+        xstream.processAnnotations(NettyAssociationMap.class);
+        
+        // Set class attribute for type discrimination
+        xstream.aliasSystemAttribute("type", "class");
+    }
 
-			for (Iterator it = map.entrySet().iterator(); it.hasNext();) {
-				Map.Entry entry = (Map.Entry) it.next();
+    public static XStream getXStream() {
+        return xstream;
+    }
 
-				xml.add((String) entry.getKey(), "name", String.class);
-				xml.add((NettyAssociationImpl) entry.getValue(), "association", NettyAssociationImpl.class);
-			}
-		}
+    public static String toXML(Object obj) {
+        return xstream.toXML(obj);
+    }
 
-		@Override
-		public void read(javolution.xml.XMLFormat.InputElement xml, NettyAssociationMap obj) throws XMLStreamException {
-			while (xml.hasNext()) {
-				String key = xml.get("name", String.class);
-				NettyAssociationImpl association = xml.get("association", NettyAssociationImpl.class);
-				obj.put(key, association);
-			}
-		}
-
-	};
-
-	protected XMLFormat getFormat(Class forClass) throws XMLStreamException {
-		if (NettyAssociationMap.class.equals(forClass)) {
-			return ASSOCIATION_MAP;
-		}
-		return super.getFormat(forClass);
-	}
+    public static Object fromXML(String xml) {
+        return xstream.fromXML(xml);
+    }
 }

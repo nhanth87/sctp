@@ -21,12 +21,27 @@
  */
 package org.mobicents.protocols.sctp;
 
-import javolution.util.FastMap;
+import org.jctools.maps.NonBlockingHashMap;
+
+import com.thoughtworks.xstream.annotations.XStreamAlias;
 
 /**
  * @author amit bhayani
  *
  */
-public class AssociationMap<K, V> extends FastMap<K, V> {
+@XStreamAlias("associationMap")
+public class AssociationMap<K, V> extends NonBlockingHashMap<K, V> {
 
+    public AssociationMap() {
+        super();
+    }
+
+    public AssociationMap(int initialCapacity) {
+        super(initialCapacity);
+    }
+
+    public AssociationMap(java.util.Map<? extends K, ? extends V> m) {
+        super(m.size());
+        putAll(m);
+    }
 }
