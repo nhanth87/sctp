@@ -56,7 +56,7 @@ import org.mobicents.protocols.api.ManagementEventListener;
 import org.mobicents.protocols.api.PayloadData;
 
 /**
- * @author <a href="mailto:amit.bhayani@telestax.com">Amit Bhayani</a>
+ * @author <a href="mailto:nhanth87@gmail.com">nhanth87</a>
  * 
  */
 @XStreamAlias("association")
@@ -736,3 +736,4 @@ public class NettyAssociationImpl implements Association {
         b.option(SctpChannelOption.SO_LINGER, this.management.getOptionSoLinger());
     }
 }
+

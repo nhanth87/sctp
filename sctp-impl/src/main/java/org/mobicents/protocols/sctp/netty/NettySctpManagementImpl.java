@@ -45,6 +45,7 @@ import org.mobicents.protocols.api.Management;
 import org.mobicents.protocols.api.ManagementEventListener;
 import org.mobicents.protocols.api.Server;
 import org.mobicents.protocols.api.ServerListener;
+import org.mobicents.protocols.api.PayloadDataPool;
 
 import com.sun.nio.sctp.SctpStandardSocketOptions;
 import com.sun.nio.sctp.SctpStandardSocketOptions.InitMaxStreams;
@@ -52,7 +53,7 @@ import com.sun.nio.sctp.SctpStandardSocketOptions.InitMaxStreams;
 import com.thoughtworks.xstream.XStream;
 
 /**
- * @author <a href="mailto:amit.bhayani@telestax.com">Amit Bhayani</a>
+ * @author <a href="mailto:nhanth87@gmail.com">nhanth87</a>
  * 
  */
 public class NettySctpManagementImpl implements Management {
@@ -154,6 +155,10 @@ public class NettySctpManagementImpl implements Management {
     // In that case the close method does not wait until unsent data is transmitted;
     // if possible the operating system will transmit any unsent data before the connection is closed. 
     private Integer optionSoLinger = null;
+
+    // PayloadDataPool for high-performance object pooling (v2.0.5)
+    private PayloadDataPool payloadDataPool;
+    private int targetThroughput = 100_000; // Default 100K msg/s
 
     private int bossGroupThreadCount = 4;
     private int workerGroupThreadCount = 4;
@@ -1641,5 +1646,46 @@ public class NettySctpManagementImpl implements Management {
 				}
 			}
 		}
+	}
+
+	// =============== PayloadDataPool Implementation (v2.0.5) ===============
+	// High-performance object pooling for reduced GC pressure
+
+	@Override
+	public PayloadDataPool getPayloadDataPool() {
+		if (this.payloadDataPool == null) {
+			synchronized (this) {
+				if (this.payloadDataPool == null) {
+					this.payloadDataPool = new PayloadDataPool(this.targetThroughput);
+				}
+			}
+		}
+		return this.payloadDataPool;
+	}
+
+	@Override
+	public void setPayloadDataPool(PayloadDataPool pool) {
+		this.payloadDataPool = pool;
+	}
+
+	@Override
+	public int getTargetThroughput() {
+		return this.targetThroughput;
+	}
+
+	@Override
+	public void setTargetThroughput(int targetThroughput) throws Exception {
+		if (this.started) {
+			throw new Exception("TargetThroughput can only be set when SCTP stack is NOT running");
+		}
+		this.targetThroughput = targetThroughput;
+	}
+
+	@Override
+	public PayloadDataPool.PoolStatistics getPoolStatistics() {
+		if (this.payloadDataPool != null) {
+			return this.payloadDataPool.getStatistics();
+		}
+		return null;
 	}
 }
