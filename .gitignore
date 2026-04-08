@@ -134,3 +134,20 @@ sctp-impl/netty-server-management_sctp.xml
 .classpath
 .project
 .vim/
+
+##############################
+## AI/Agent directories
+##############################
+.minimax/
+.minimax-agent/
+.claude/
+.clawdbot/
+.cursor/
+.gemini/
+.kimi/
+.codex/
+.codegeex/
+.codegpt/
+.continue/
+.odo/
+.ssh/
