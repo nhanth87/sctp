@@ -651,17 +651,10 @@ public class AssociationImpl implements Association {
         byteBuf.writeBytes(rxBuffer);
         rxBuffer.clear();
 
-        // Use PayloadDataPool instead of direct allocation
+        // Use PayloadDataPool for object reuse
         PayloadDataPool pool = this.management.getPayloadDataPool();
-        PayloadData payload;
-        if (pool != null) {
-            payload = pool.acquire(len, byteBuf, messageInfo.isComplete(), messageInfo.isUnordered(),
-                messageInfo.payloadProtocolID(), messageInfo.streamNumber());
-        } else {
-            // Fallback to direct allocation if pool not available
-            payload = new PayloadData(len, byteBuf, messageInfo.isComplete(), messageInfo.isUnordered(),
-                messageInfo.payloadProtocolID(), messageInfo.streamNumber());
-        }
+        PayloadData payload = pool.acquire(len, byteBuf, messageInfo.isComplete(), messageInfo.isUnordered(),
+            messageInfo.payloadProtocolID(), messageInfo.streamNumber());
 
         return payload;
     }
@@ -684,15 +677,9 @@ public class AssociationImpl implements Association {
         byteBuf.writeBytes(rxBuffer);
         rxBuffer.clear();
 
-        // Use PayloadDataPool instead of direct allocation
+        // Use PayloadDataPool for object reuse
         PayloadDataPool pool = this.management.getPayloadDataPool();
-        PayloadData payload;
-        if (pool != null) {
-            payload = pool.acquireTcp(len, byteBuf);
-        } else {
-            // Fallback to direct allocation if pool not available
-            payload = new PayloadData(len, byteBuf, true, false, 0, 0);
-        }
+        PayloadData payload = pool.acquireTcp(len, byteBuf);
 
         return payload;
     }
