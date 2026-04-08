@@ -23,9 +23,11 @@ package org.mobicents.protocols.sctp;
 
 import org.mobicents.protocols.api.AssociationListener;
 import org.mobicents.protocols.api.PayloadData;
+import org.mobicents.protocols.api.PayloadDataPool;
 
 /**
  * @author <a href="mailto:nhanth87@gmail.com">nhanth87</a>
+ * @author jenny (added PayloadDataPool support for object reuse)
  * 
  */
 public class Worker implements Runnable {
@@ -33,17 +35,21 @@ public class Worker implements Runnable {
 	private AssociationImpl association;
 	private AssociationListener associationListener;
 	private PayloadData payloadData;
+	private PayloadDataPool payloadDataPool;
 
 	/**
 	 * @param association
 	 * @param associationListener
 	 * @param payloadData
+	 * @param payloadDataPool Pool for releasing PayloadData after processing (can be null)
 	 */
-	protected Worker(AssociationImpl association, AssociationListener associationListener, PayloadData payloadData) {
+	protected Worker(AssociationImpl association, AssociationListener associationListener, 
+			PayloadData payloadData, PayloadDataPool payloadDataPool) {
 		super();
 		this.association = association;
 		this.associationListener = associationListener;
 		this.payloadData = payloadData;
+		this.payloadDataPool = payloadDataPool;
 	}
 
 	/*
@@ -57,6 +63,11 @@ public class Worker implements Runnable {
 			this.associationListener.onPayload(this.association, this.payloadData);
 		} catch (Exception e) {
 			e.printStackTrace();
+		} finally {
+			// Release PayloadData back to pool for reuse
+			if (this.payloadDataPool != null && this.payloadData != null) {
+				this.payloadDataPool.release(this.payloadData);
+			}
 		}
 	}
 

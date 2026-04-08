@@ -54,6 +54,7 @@ import org.mobicents.protocols.api.CongestionListener;
 import org.mobicents.protocols.api.IpChannelType;
 import org.mobicents.protocols.api.ManagementEventListener;
 import org.mobicents.protocols.api.PayloadData;
+import org.mobicents.protocols.api.PayloadDataPool;
 
 /**
  * @author <a href="mailto:nhanth87@gmail.com">nhanth87</a>
@@ -587,6 +588,12 @@ public class NettyAssociationImpl implements Association {
             this.associationListener.onPayload(this, payload);
         } catch (Exception e) {
             logger.error(String.format("Error while calling Listener for Association=%s.Payload=%s", this.name, payload), e);
+        } finally {
+            // Release PayloadData back to pool for reuse
+            PayloadDataPool pool = this.management.getPayloadDataPool();
+            if (pool != null && payload != null) {
+                pool.release(payload);
+            }
         }
     }
 

@@ -49,6 +49,8 @@ import org.mobicents.protocols.api.CongestionListener;
 import org.mobicents.protocols.api.IpChannelType;
 import org.mobicents.protocols.api.Management;
 import org.mobicents.protocols.api.ManagementEventListener;
+import org.mobicents.protocols.api.PayloadData;
+import org.mobicents.protocols.api.PayloadDataPool;
 import org.mobicents.protocols.api.Server;
 import org.mobicents.protocols.api.ServerListener;
 import org.mobicents.protocols.sctp.netty.NettySctpManagementImpl;
@@ -389,6 +391,46 @@ public class ManagementImpl implements Management {
 
         this.started = false;
     }
+
+    // PayloadDataPool methods (v2.0.5)
+@Override
+public PayloadDataPool getPayloadDataPool() {
+    if (this.payloadDataPool == null) {
+        synchronized (this) {
+            if (this.payloadDataPool == null) {
+                this.payloadDataPool = new PayloadDataPool(this.targetThroughput);
+            }
+        }
+    }
+    return this.payloadDataPool;
+}
+
+@Override
+public void setPayloadDataPool(PayloadDataPool pool) {
+    this.payloadDataPool = pool;
+}
+
+@Override
+public int getTargetThroughput() {
+    return this.targetThroughput;
+}
+
+@Override
+public void setTargetThroughput(int targetThroughput) throws Exception {
+    if (this.started) {
+        throw new Exception("Cannot change target throughput while management is started");
+    }
+    this.targetThroughput = targetThroughput;
+}
+
+@Override
+public PayloadDataPool.PoolStatistics getPoolStatistics() {
+    if (this.payloadDataPool != null) {
+        return this.payloadDataPool.getStatistics();
+    }
+    return null;
+}
+
 
     public boolean isStarted(){
         return this.started;
