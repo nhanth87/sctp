@@ -38,7 +38,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * - Pool size: 50,000-100,000 (2-4x concurrent need)
  * - Memory per object: ~200 bytes = 10-20MB (negligible vs 32GB)
  * 
- * @author jenny
+ * @author <a href="mailto:nhanth87@gmail.com">nhanth87</a>
  */
 public final class PayloadDataPool {
     

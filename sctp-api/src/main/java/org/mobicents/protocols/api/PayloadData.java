@@ -30,7 +30,7 @@ import org.mobicents.commons.HexTools;
  * The actual pay load data received or to be sent from/to underlying socket.
  * Optimized for object pooling with Javolution.
  *
- * @author amit bhayani
+ * @author <a href="mailto:nhanth87@gmail.com">nhanth87</a>
  * @author jenny (added pooling support)
  *
  */

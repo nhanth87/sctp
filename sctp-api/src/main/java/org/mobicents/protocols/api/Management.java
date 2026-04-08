@@ -45,7 +45,7 @@ import java.util.Map;
  * Management will look at System set property <tt>user.dir</tt>
  * </p>
  * 
- * @author amit bhayani
+ * @author <a href="mailto:nhanth87@gmail.com">nhanth87</a>
  * @author afe (aferreiraguido@gmail.com)
  *
  */
@@ -798,5 +798,50 @@ public interface Management {
 	 */
 	public void modifyAssociation(String hostAddress, Integer hostPort, String peerAddress, Integer peerPort, String associationName, IpChannelType ipChannelType,
 			String[] extraHostAddresses) throws Exception;
+
+	// =============== PayloadDataPool Configuration (v2.0.5) ===============
+	// High-performance object pooling for reduced GC pressure
+
+	/**
+	 * Get the PayloadDataPool for this management instance.
+	 * The pool is used to reduce GC pressure in high-throughput scenarios.
+	 *
+	 * @return PayloadDataPool instance, never null
+	 */
+	public PayloadDataPool getPayloadDataPool();
+
+	/**
+	 * Set a custom PayloadDataPool for this management instance.
+	 * If not set, a default pool will be created on start() based on target throughput.
+	 *
+	 * @param pool Custom PayloadDataPool instance
+	 */
+	public void setPayloadDataPool(PayloadDataPool pool);
+
+	/**
+	 * Get the target messages per second for pool sizing.
+	 * This is used to calculate appropriate pool size when using default pool.
+	 *
+	 * @return Target throughput (messages per second)
+	 */
+	public int getTargetThroughput();
+
+	/**
+	 * Set the target messages per second for pool sizing.
+	 * Recommended values: 10_000, 100_000, 500_000, 1_000_000
+	 * Default is 100_000 (100K msg/s)
+	 *
+	 * @param targetThroughput Target throughput in messages per second
+	 * @throws Exception if management is already started
+	 */
+	public void setTargetThroughput(int targetThroughput) throws Exception;
+
+	/**
+	 * Get pool statistics for monitoring.
+	 * Useful for debugging and performance tuning.
+	 *
+	 * @return PoolStatistics containing hit rate, utilization, etc.
+	 */
+	public PayloadDataPool.PoolStatistics getPoolStatistics();
 
 }

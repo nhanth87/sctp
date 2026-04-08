@@ -56,7 +56,7 @@ import org.mobicents.protocols.sctp.netty.NettySctpManagementImpl;
 import com.thoughtworks.xstream.XStream;
 
 /**
- * @author amit bhayani
+ * @author <a href="mailto:nhanth87@gmail.com">nhanth87</a>
  * @author afe (aferreiraguido@gmail.com)
  *
  */
@@ -87,6 +87,10 @@ public class ManagementImpl implements Management {
 	protected final AssociationMap<String, Association> associations = new AssociationMap<>();
 
 	private final MpscArrayQueue<ChangeRequest> pendingChanges = new MpscArrayQueue<>(1024);
+
+	// PayloadDataPool for high-performance object pooling (v2.0.5)
+	private PayloadDataPool payloadDataPool;
+	private int targetThroughput = 100_000;
 
 	// Create a new selector
 	private Selector socketSelector = null;
@@ -1393,3 +1397,5 @@ public class ManagementImpl implements Management {
 
     }
 }
+
+

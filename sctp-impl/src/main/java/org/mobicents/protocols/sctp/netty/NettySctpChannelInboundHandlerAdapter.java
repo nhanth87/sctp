@@ -34,6 +34,7 @@ import org.apache.log4j.Logger;
 import org.apache.log4j.Priority;
 import org.mobicents.protocols.api.IpChannelType;
 import org.mobicents.protocols.api.PayloadData;
+import org.mobicents.protocols.api.PayloadDataPool;
 
 import com.sun.nio.sctp.AssociationChangeNotification;
 import com.sun.nio.sctp.PeerAddressChangeNotification;
@@ -41,7 +42,7 @@ import com.sun.nio.sctp.SendFailedNotification;
 import com.sun.nio.sctp.ShutdownNotification;
 
 /**
- * @author <a href="mailto:amit.bhayani@telestax.com">Amit Bhayani</a>
+ * @author <a href="mailto:nhanth87@gmail.com">nhanth87</a>
  * 
  */
 public class NettySctpChannelInboundHandlerAdapter extends ChannelInboundHandlerAdapter {
@@ -218,18 +219,20 @@ public class NettySctpChannelInboundHandlerAdapter extends ChannelInboundHandler
     public void channelRead(ChannelHandlerContext ctx, Object msg) {
         try {
             PayloadData payload;
+            PayloadDataPool pool = this.association.getManagement().getPayloadDataPool();
+            
             if (this.association.getIpChannelType() == IpChannelType.SCTP) {
                 SctpMessage sctpMessage = (SctpMessage) msg;
                 ByteBuf byteBuf = sctpMessage.content();
                 // Retain the ByteBuf as it will be passed to the association layer
                 byteBuf.retain();
-                payload = new PayloadData(byteBuf.readableBytes(), byteBuf, sctpMessage.isComplete(), sctpMessage.isUnordered(),
+                payload = pool.acquire(byteBuf.readableBytes(), byteBuf, sctpMessage.isComplete(), sctpMessage.isUnordered(),
                         sctpMessage.protocolIdentifier(), sctpMessage.streamIdentifier());
             } else {
                 ByteBuf byteBuf = (ByteBuf) msg;
                 // Retain the ByteBuf as it will be passed to the association layer
                 byteBuf.retain();
-                payload = new PayloadData(byteBuf.readableBytes(), byteBuf, true, false, 0, 0);
+                payload = pool.acquireTcp(byteBuf.readableBytes(), byteBuf);
             }
 
             if (logger.isEnabledFor(Level.DEBUG)) {

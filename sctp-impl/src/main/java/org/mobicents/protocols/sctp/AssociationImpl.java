@@ -61,7 +61,7 @@ import com.sun.nio.sctp.MessageInfo;
 import com.sun.nio.sctp.SctpChannel;
 
 /**
- * @author amit bhayani
+ * @author <a href="mailto:nhanth87@gmail.com">nhanth87</a>
  *
  */
 @XStreamAlias("association")

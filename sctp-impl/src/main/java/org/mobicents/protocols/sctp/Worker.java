@@ -25,7 +25,7 @@ import org.mobicents.protocols.api.AssociationListener;
 import org.mobicents.protocols.api.PayloadData;
 
 /**
- * @author amit bhayani
+ * @author <a href="mailto:nhanth87@gmail.com">nhanth87</a>
  * 
  */
 public class Worker implements Runnable {
