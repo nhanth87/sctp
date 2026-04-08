@@ -26,6 +26,7 @@ import com.sun.nio.sctp.SctpMultiChannel;
 import com.sun.nio.sctp.SctpStandardSocketOptions;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
+import io.netty.buffer.PooledByteBufAllocator;
 import io.netty.buffer.Unpooled;
 import io.netty.util.ReferenceCountUtil;
 
@@ -56,6 +57,7 @@ import org.mobicents.protocols.api.AssociationType;
 import org.mobicents.protocols.api.IpChannelType;
 import org.mobicents.protocols.api.ManagementEventListener;
 import org.mobicents.protocols.api.PayloadData;
+import org.mobicents.protocols.api.PayloadDataPool;
 
 import com.sun.nio.sctp.MessageInfo;
 import com.sun.nio.sctp.SctpChannel;
@@ -579,9 +581,15 @@ public class AssociationImpl implements Association {
 				} catch (Exception e) {
 					logger.error(String.format("Error while calling Listener for Association=%s.Payload=%s",
                             getAssociationName(), payload), e);
+				} finally {
+					// Release PayloadData back to pool for reuse
+					PayloadDataPool pool = this.management.getPayloadDataPool();
+					if (pool != null && payload != null) {
+						pool.release(payload);
+					}
 				}
 			} else {
-				Worker worker = new Worker(this, this.associationListener, payload);
+				Worker worker = new Worker(this, this.associationListener, payload, this.management.getPayloadDataPool());
 
 	//				System.out.println("payload.getStreamNumber()=" + payload.getStreamNumber()
 	//						+ " this.workerThreadTable[payload.getStreamNumber()]"
@@ -637,11 +645,23 @@ public class AssociationImpl implements Association {
         }
 
         rxBuffer.flip();
-        ByteBuf byteBuf = Unpooled.copiedBuffer(rxBuffer);
+        // Use PooledByteBufAllocator for zero-copy-like performance
+        // Allocate direct buffer from pool and copy data (avoids heap allocation)
+        ByteBuf byteBuf = PooledByteBufAllocator.DEFAULT.directBuffer(len);
+        byteBuf.writeBytes(rxBuffer);
         rxBuffer.clear();
 
-        PayloadData payload = new PayloadData(len, byteBuf, messageInfo.isComplete(), messageInfo.isUnordered(),
-            messageInfo.payloadProtocolID(), messageInfo.streamNumber());
+        // Use PayloadDataPool instead of direct allocation
+        PayloadDataPool pool = this.management.getPayloadDataPool();
+        PayloadData payload;
+        if (pool != null) {
+            payload = pool.acquire(len, byteBuf, messageInfo.isComplete(), messageInfo.isUnordered(),
+                messageInfo.payloadProtocolID(), messageInfo.streamNumber());
+        } else {
+            // Fallback to direct allocation if pool not available
+            payload = new PayloadData(len, byteBuf, messageInfo.isComplete(), messageInfo.isUnordered(),
+                messageInfo.payloadProtocolID(), messageInfo.streamNumber());
+        }
 
         return payload;
     }
@@ -659,10 +679,20 @@ public class AssociationImpl implements Association {
         }
 
         rxBuffer.flip();
-        ByteBuf byteBuf = Unpooled.copiedBuffer(rxBuffer);
+        // Use PooledByteBufAllocator for zero-copy-like performance
+        ByteBuf byteBuf = PooledByteBufAllocator.DEFAULT.directBuffer(len);
+        byteBuf.writeBytes(rxBuffer);
         rxBuffer.clear();
 
-        PayloadData payload = new PayloadData(len, byteBuf, true, false, 0, 0);
+        // Use PayloadDataPool instead of direct allocation
+        PayloadDataPool pool = this.management.getPayloadDataPool();
+        PayloadData payload;
+        if (pool != null) {
+            payload = pool.acquireTcp(len, byteBuf);
+        } else {
+            // Fallback to direct allocation if pool not available
+            payload = new PayloadData(len, byteBuf, true, false, 0, 0);
+        }
 
         return payload;
     }
