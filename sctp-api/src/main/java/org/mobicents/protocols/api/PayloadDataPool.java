@@ -167,11 +167,6 @@ public final class PayloadDataPool {
      */
     public PayloadData acquire(int dataLength, ByteBuf byteBuf, boolean complete, 
                                boolean unordered, int payloadProtocolId, int streamNumber) {
-        if (!enabled) {
-            createdCount.incrementAndGet();
-            return new PayloadData(dataLength, byteBuf, complete, unordered, payloadProtocolId, streamNumber);
-        }
-        
         PayloadData data = pool.relaxedPoll();
         
         if (data != null) {
@@ -187,11 +182,11 @@ public final class PayloadDataPool {
             return data;
         }
         
-        // Pool empty, create new
+        // Pool empty, create new but mark as pooled so it can be returned to pool
         missedCount.incrementAndGet();
         createdCount.incrementAndGet();
         data = new PayloadData(dataLength, byteBuf, complete, unordered, payloadProtocolId, streamNumber);
-        data.setPooled(false); // Mark as non-pooled since we can't return it to pool
+        data.setPooled(true); // Mark as pooled so it CAN be returned to pool
         return data;
     }
     
