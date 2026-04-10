@@ -41,9 +41,9 @@ class AssociationHandler extends AbstractNotificationHandler<AssociationImpl> {
 
 	private static final Logger logger = Logger.getLogger(AssociationHandler.class);
 	
-	//Default value is 1 for TCP
-	private volatile int maxInboundStreams = 1;
-	private volatile int maxOutboundStreams = 1;
+	//Default value is 32 for SCTP (increased from 1)
+	private volatile int maxInboundStreams = 32;
+	private volatile int maxOutboundStreams = 32;
 
 	public AssociationHandler() {
 	}
