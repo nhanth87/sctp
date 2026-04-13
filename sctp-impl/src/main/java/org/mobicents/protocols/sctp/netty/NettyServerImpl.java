@@ -38,9 +38,9 @@ import java.net.InetSocketAddress;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.List;
 
-import com.thoughtworks.xstream.annotations.XStreamAlias;
-import com.thoughtworks.xstream.annotations.XStreamAsAttribute;
-import com.thoughtworks.xstream.annotations.XStreamOmitField;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlProperty;
+import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlRootElement;
 
 import org.apache.log4j.Logger;
 import org.mobicents.protocols.api.Association;
@@ -51,50 +51,50 @@ import org.mobicents.protocols.api.Server;
  * @author <a href="mailto:amit.bhayani@telestax.com">Amit Bhayani</a>
  * 
  */
-@XStreamAlias("server")
+@JacksonXmlRootElement(localName = "server")
 public class NettyServerImpl implements Server {
 
     private static final Logger logger = Logger.getLogger(NettyServerImpl.class.getName());
 
     private static final String COMMA = ", ";
 
-    @XStreamAsAttribute
+    @JacksonXmlProperty(isAttribute = true)
     private String name;
     
-    @XStreamAsAttribute
+    @JacksonXmlProperty(isAttribute = true)
     private String hostAddress;
     
-    @XStreamAsAttribute
+    @JacksonXmlProperty(isAttribute = true)
     private int hostport;
     
-    @XStreamAsAttribute
+    @JacksonXmlProperty(isAttribute = true)
     private volatile boolean started = false;
     
-    @XStreamAsAttribute
+    @JacksonXmlProperty(isAttribute = true)
     private IpChannelType ipChannelType;
     
-    @XStreamAsAttribute
+    @JacksonXmlProperty(isAttribute = true)
     private boolean acceptAnonymousConnections;
     
-    @XStreamAsAttribute
+    @JacksonXmlProperty(isAttribute = true)
     private int maxConcurrentConnectionsCount;
     
     private String[] extraHostAddresses;
 
-    @XStreamOmitField
+    @JsonIgnore
     private NettySctpManagementImpl management = null;
 
     protected final CopyOnWriteArrayList<String> associations = new CopyOnWriteArrayList<String>();
     
-    @XStreamOmitField
+    @JsonIgnore
     protected final CopyOnWriteArrayList<Association> anonymAssociations = new CopyOnWriteArrayList<Association>();
 
     // Netty declarations
     // The channel on which we'll accept connections
-    @XStreamOmitField
+    @JsonIgnore
     private SctpServerChannel serverChannelSctp;
     
-    @XStreamOmitField
+    @JsonIgnore
     private NioServerSocketChannel serverChannelTcp;
 
     /**
@@ -342,7 +342,11 @@ public class NettyServerImpl implements Server {
         b.group(this.management.getBossGroup(), this.management.getWorkerGroup());
         if (this.ipChannelType == IpChannelType.SCTP) {
             b.channel(NioSctpServerChannel.class);
-            b.option(ChannelOption.SO_BACKLOG, 100);
+            // SO_BACKLOG not supported on Linux/WSL JDK SCTP implementation
+            String osName = System.getProperty("os.name").toLowerCase();
+            if (osName.contains("win")) {
+                b.option(ChannelOption.SO_BACKLOG, 100);
+            }
             b.childHandler(new NettySctpServerChannelInitializer(this, this.management));
             this.applySctpOptions(b);
         } else {
@@ -386,13 +390,24 @@ public class NettyServerImpl implements Server {
     }
 
     private void applySctpOptions(ServerBootstrap b) {
+        // SCTP standard options (usually supported)
         b.childOption(SctpChannelOption.SCTP_NODELAY, this.management.getOptionSctpNodelay());
         b.childOption(SctpChannelOption.SCTP_DISABLE_FRAGMENTS, this.management.getOptionSctpDisableFragments());
         b.childOption(SctpChannelOption.SCTP_FRAGMENT_INTERLEAVE, this.management.getOptionSctpFragmentInterleave());
         b.childOption(SctpChannelOption.SCTP_INIT_MAXSTREAMS, this.management.getOptionSctpInitMaxstreams());
-        b.childOption(SctpChannelOption.SO_SNDBUF, this.management.getOptionSoSndbuf());
-        b.childOption(SctpChannelOption.SO_RCVBUF, this.management.getOptionSoRcvbuf());
-        b.childOption(SctpChannelOption.SO_LINGER, this.management.getOptionSoLinger());
+        
+        // Socket buffer options - not supported on some platforms (e.g., WSL2)
+        // Skip setting these on Linux/Unix platforms
+        String osName = System.getProperty("os.name").toLowerCase();
+        if (osName.contains("win")) {
+            // Windows supports these options
+            b.childOption(SctpChannelOption.SO_SNDBUF, this.management.getOptionSoSndbuf());
+            b.childOption(SctpChannelOption.SO_RCVBUF, this.management.getOptionSoRcvbuf());
+            b.childOption(SctpChannelOption.SO_LINGER, this.management.getOptionSoLinger());
+        } else {
+            // Linux/Unix/WSL - skip socket buffer options
+            logger.debug("Skipping SO_SNDBUF/SO_RCVBUF/SO_LINGER on non-Windows platform: " + osName);
+        }
     }
 
     @Override

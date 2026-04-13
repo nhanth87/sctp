@@ -42,9 +42,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
-import com.thoughtworks.xstream.annotations.XStreamAlias;
-import com.thoughtworks.xstream.annotations.XStreamAsAttribute;
-import com.thoughtworks.xstream.annotations.XStreamOmitField;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlProperty;
+import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlRootElement;
 
 import org.apache.log4j.Logger;
 import org.mobicents.protocols.api.Association;
@@ -60,62 +60,62 @@ import org.mobicents.protocols.api.PayloadDataPool;
  * @author <a href="mailto:nhanth87@gmail.com">nhanth87</a>
  * 
  */
-@XStreamAlias("association")
+@JacksonXmlRootElement(localName = "association")
 public class NettyAssociationImpl implements Association {
 
     protected static final Logger logger = Logger.getLogger(NettyAssociationImpl.class.getName());
 
-    @XStreamAsAttribute
+    @JacksonXmlProperty(isAttribute = true)
     private String hostAddress;
     
-    @XStreamAsAttribute
+    @JacksonXmlProperty(isAttribute = true)
     private int hostPort;
     
-    @XStreamAsAttribute
+    @JacksonXmlProperty(isAttribute = true)
     private String peerAddress;
     
-    @XStreamAsAttribute
+    @JacksonXmlProperty(isAttribute = true)
     private int peerPort;
     
-    @XStreamAsAttribute
+    @JacksonXmlProperty(isAttribute = true)
     private String serverName;
     
-    @XStreamAsAttribute
+    @JacksonXmlProperty(isAttribute = true)
     private String name;
     
-    @XStreamAsAttribute
+    @JacksonXmlProperty(isAttribute = true)
     private IpChannelType ipChannelType;
     
     private String[] extraHostAddresses;
     private String[] extraPeerHostAddresses;  // For peer multihoming support
     
-    @XStreamOmitField
+    @JsonIgnore
     private NettyServerImpl server; // this is filled only for anonymous Associations
 
-    @XStreamAsAttribute
+    @JacksonXmlProperty(isAttribute = true)
     private AssociationType type;
 
-    @XStreamOmitField
+    @JsonIgnore
     private AssociationListener associationListener = null;
 
-    @XStreamOmitField
+    @JsonIgnore
     private NettySctpManagementImpl management;
 
     // Is the Association been started by management?
-    @XStreamOmitField
+    @JsonIgnore
     private volatile boolean started = false;
 
-    @XStreamOmitField
+    @JsonIgnore
     private volatile boolean isFirstStart = true;
     
     // Is the Association up (connection is established)
-    @XStreamOmitField
+    @JsonIgnore
     protected volatile boolean up = false;
 
-    @XStreamOmitField
+    @JsonIgnore
     private NettySctpChannelInboundHandlerAdapter channelHandler;
     
-    @XStreamOmitField
+    @JsonIgnore
     protected int congLevel;
 
     public NettyAssociationImpl() {
@@ -743,4 +743,3 @@ public class NettyAssociationImpl implements Association {
         b.option(SctpChannelOption.SO_LINGER, this.management.getOptionSoLinger());
     }
 }
-
