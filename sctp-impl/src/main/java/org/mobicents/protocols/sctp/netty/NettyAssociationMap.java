@@ -26,13 +26,13 @@ import java.util.Map;
 
 import org.jctools.maps.NonBlockingHashMap;
 
-import com.thoughtworks.xstream.annotations.XStreamAlias;
+import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlRootElement;
 
 /**
  * @author amit bhayani
  *
  */
-@XStreamAlias("associationMap")
+@JacksonXmlRootElement(localName = "associationMap")
 public class NettyAssociationMap<K, V> extends NonBlockingHashMap<K, V> {
 
     public NettyAssociationMap() {

@@ -47,10 +47,12 @@ import org.mobicents.protocols.api.Server;
 import org.mobicents.protocols.api.ServerListener;
 import org.mobicents.protocols.api.PayloadDataPool;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.dataformat.xml.XmlMapper;
+
 import com.sun.nio.sctp.SctpStandardSocketOptions;
 import com.sun.nio.sctp.SctpStandardSocketOptions.InitMaxStreams;
-
-import com.thoughtworks.xstream.XStream;
 
 /**
  * @author <a href="mailto:nhanth87@gmail.com">nhanth87</a>
@@ -1283,39 +1285,38 @@ public class NettySctpManagementImpl implements Management {
 
     @SuppressWarnings("unchecked")
     protected void load() throws FileNotFoundException {
-        XStream xstream = NettySctpXMLBinding.getXStream();
+        XmlMapper xmlMapper = NettySctpXMLBinding.getXmlMapper();
         
-        try (InputStreamReader reader = new InputStreamReader(new FileInputStream(persistFile.toString()))) {
-            // Read the root element to get individual properties
-            java.util.Map<String, Object> rootMap = (java.util.Map<String, Object>) xstream.fromXML(reader);
+        try {
+            SctpPersistData persistData = xmlMapper.readValue(new File(persistFile.toString()), SctpPersistData.class);
             
-            if (rootMap != null) {
-                loadFromMap(rootMap);
+            if (persistData != null) {
+                loadFromPersistData(persistData);
             }
+        } catch (FileNotFoundException e) {
+            throw e;
         } catch (Exception ex) {
             logger.error("Error while loading SCTP configuration from persisted file", ex);
         }
     }
     
-    @SuppressWarnings("unchecked")
-    protected void loadFromMap(java.util.Map<String, Object> rootMap) {
+    protected void loadFromPersistData(SctpPersistData persistData) {
         try {
-            Integer vali = (Integer) rootMap.get(CONNECT_DELAY_PROP);
+            Integer vali = persistData.getConnectDelay();
             if (vali != null)
                 this.connectDelay = vali;
-            vali = (Integer) rootMap.get(WORKER_THREADS_PROP);
-            Boolean valb = (Boolean) rootMap.get(SINGLE_THREAD_PROP);
+            // workerThreads and singleThread are deprecated but kept for compatibility
         } catch (java.lang.NullPointerException npe) {
             // ignore.
             // For backward compatibility we can ignore if these values are not defined
         }
 
-        Double valTH1 = (Double) rootMap.get(CONG_CONTROL_DELAY_THRESHOLD_1);
-        Double valTH2 = (Double) rootMap.get(CONG_CONTROL_DELAY_THRESHOLD_2);
-        Double valTH3 = (Double) rootMap.get(CONG_CONTROL_DELAY_THRESHOLD_3);
-        Double valTB1 = (Double) rootMap.get(CONG_CONTROL_BACK_TO_NORMAL_DELAY_THRESHOLD_1);
-        Double valTB2 = (Double) rootMap.get(CONG_CONTROL_BACK_TO_NORMAL_DELAY_THRESHOLD_2);
-        Double valTB3 = (Double) rootMap.get(CONG_CONTROL_BACK_TO_NORMAL_DELAY_THRESHOLD_3);
+        Double valTH1 = persistData.getCongControlDelayThreshold1();
+        Double valTH2 = persistData.getCongControlDelayThreshold2();
+        Double valTH3 = persistData.getCongControlDelayThreshold3();
+        Double valTB1 = persistData.getCongControlBackToNormalDelayThreshold1();
+        Double valTB2 = persistData.getCongControlBackToNormalDelayThreshold2();
+        Double valTB3 = persistData.getCongControlBackToNormalDelayThreshold3();
         if (valTH1 != null && valTH2 != null && valTH3 != null && valTB1 != null && valTB2 != null && valTB3 != null) {
             this.congControl_DelayThreshold = new double[3];
             this.congControl_DelayThreshold[0] = valTH1;
@@ -1327,9 +1328,13 @@ public class NettySctpManagementImpl implements Management {
             this.congControl_BackToNormalDelayThreshold[2] = valTB3;
         }
 
-        CopyOnWriteArrayList<Server> loadedServers = (CopyOnWriteArrayList<Server>) rootMap.get(SERVERS);
+        java.util.List<Server> loadedServers = (java.util.List<Server>) persistData.getServers();
         if (loadedServers != null) {
-            this.servers.addAll(loadedServers);
+            for (Server server : loadedServers) {
+                if (server instanceof NettyServerImpl) {
+                    this.servers.add(server);
+                }
+            }
         }
 
         for (Server serverTemp : this.servers) {
@@ -1343,9 +1348,13 @@ public class NettySctpManagementImpl implements Management {
             }
         }
 
-        NettyAssociationMap<String, Association> loadedAssociations = (NettyAssociationMap<String, Association>) rootMap.get(ASSOCIATIONS);
+        java.util.Map<String, Association> loadedAssociations = persistData.getAssociations();
         if (loadedAssociations != null) {
-            this.associations.putAll(loadedAssociations);
+            for (java.util.Map.Entry<String, Association> entry : loadedAssociations.entrySet()) {
+                if (entry.getValue() instanceof NettyAssociationImpl) {
+                    this.associations.put(entry.getKey(), entry.getValue());
+                }
+            }
         }
         for (Association associationTemp : this.associations.values()) {
             NettyAssociationImpl associationImpl = (NettyAssociationImpl) associationTemp;
@@ -1354,31 +1363,43 @@ public class NettySctpManagementImpl implements Management {
     }
 
     public void store() {
-        XStream xstream = NettySctpXMLBinding.getXStream();
+        XmlMapper xmlMapper = NettySctpXMLBinding.getXmlMapper();
         
-        try (OutputStreamWriter writer = new OutputStreamWriter(new FileOutputStream(persistFile.toString()))) {
-            // Create a map to hold all the data
-            java.util.Map<String, Object> rootMap = new java.util.HashMap<>();
+        try {
+            SctpPersistData persistData = new SctpPersistData();
             
-            rootMap.put(CONNECT_DELAY_PROP, this.connectDelay);
+            persistData.setConnectDelay(this.connectDelay);
             
             if (this.congControl_DelayThreshold != null && this.congControl_DelayThreshold.length == 3) {
-                rootMap.put(CONG_CONTROL_DELAY_THRESHOLD_1, this.congControl_DelayThreshold[0]);
-                rootMap.put(CONG_CONTROL_DELAY_THRESHOLD_2, this.congControl_DelayThreshold[1]);
-                rootMap.put(CONG_CONTROL_DELAY_THRESHOLD_3, this.congControl_DelayThreshold[2]);
+                persistData.setCongControlDelayThreshold1(this.congControl_DelayThreshold[0]);
+                persistData.setCongControlDelayThreshold2(this.congControl_DelayThreshold[1]);
+                persistData.setCongControlDelayThreshold3(this.congControl_DelayThreshold[2]);
             }
             if (this.congControl_BackToNormalDelayThreshold != null && this.congControl_BackToNormalDelayThreshold.length == 3) {
-                rootMap.put(CONG_CONTROL_BACK_TO_NORMAL_DELAY_THRESHOLD_1, this.congControl_BackToNormalDelayThreshold[0]);
-                rootMap.put(CONG_CONTROL_BACK_TO_NORMAL_DELAY_THRESHOLD_2, this.congControl_BackToNormalDelayThreshold[1]);
-                rootMap.put(CONG_CONTROL_BACK_TO_NORMAL_DELAY_THRESHOLD_3, this.congControl_BackToNormalDelayThreshold[2]);
+                persistData.setCongControlBackToNormalDelayThreshold1(this.congControl_BackToNormalDelayThreshold[0]);
+                persistData.setCongControlBackToNormalDelayThreshold2(this.congControl_BackToNormalDelayThreshold[1]);
+                persistData.setCongControlBackToNormalDelayThreshold3(this.congControl_BackToNormalDelayThreshold[2]);
             }
 
-            rootMap.put(SERVERS, new CopyOnWriteArrayList<Server>(this.servers));
-            NettyAssociationMap<String, Association> mapForWrite = new NettyAssociationMap<String, Association>();
-            mapForWrite.putAll(this.associations);
-            rootMap.put(ASSOCIATIONS, mapForWrite);
+            // Create list of servers
+            CopyOnWriteArrayList<Server> serverList = new CopyOnWriteArrayList<Server>();
+            for (Server server : this.servers) {
+                if (server instanceof NettyServerImpl) {
+                    serverList.add(server);
+                }
+            }
+            persistData.setServers(serverList);
+            
+            // Create map of associations
+            NettyAssociationMap<String, Association> assocMap = new NettyAssociationMap<String, Association>();
+            for (java.util.Map.Entry<String, Association> entry : this.associations.entrySet()) {
+                if (entry.getValue() instanceof NettyAssociationImpl) {
+                    assocMap.put(entry.getKey(), entry.getValue());
+                }
+            }
+            persistData.setAssociations(assocMap);
 
-            xstream.toXML(rootMap, writer);
+            xmlMapper.writeValue(new File(persistFile.toString()), persistData);
         } catch (Exception e) {
             logger.error("Error while persisting the SCTP state in file", e);
         }

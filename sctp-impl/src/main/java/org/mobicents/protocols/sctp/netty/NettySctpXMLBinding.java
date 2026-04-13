@@ -19,43 +19,48 @@
  */
 package org.mobicents.protocols.sctp.netty;
 
-import com.thoughtworks.xstream.XStream;
-import com.thoughtworks.xstream.io.xml.DomDriver;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.dataformat.xml.XmlMapper;
+import com.fasterxml.jackson.dataformat.xml.ser.ToXmlGenerator;
 
 /**
+ * XML Binding for Netty SCTP using Jackson XML instead of XStream.
+ * 
  * @author <a href="mailto:amit.bhayani@telestax.com">Amit Bhayani</a>
  * 
  */
 public class NettySctpXMLBinding {
 
-    private static final XStream xstream;
+    private static final XmlMapper xmlMapper;
 
     static {
-        xstream = new XStream(new DomDriver());
+        xmlMapper = new XmlMapper();
         
-        // Configure aliases
-        xstream.alias("server", NettyServerImpl.class);
-        xstream.alias("association", NettyAssociationImpl.class);
-        xstream.alias("associationMap", NettyAssociationMap.class);
+        // Configure the mapper
+        xmlMapper.configure(ToXmlGenerator.Feature.WRITE_XML_DECLARATION, true);
+        xmlMapper.enable(SerializationFeature.INDENT_OUTPUT);
+        xmlMapper.disable(SerializationFeature.FAIL_ON_EMPTY_BEANS);
         
-        // Process annotations
-        xstream.processAnnotations(NettyAssociationImpl.class);
-        xstream.processAnnotations(NettyServerImpl.class);
-        xstream.processAnnotations(NettyAssociationMap.class);
-        
-        // Set class attribute for type discrimination
-        xstream.aliasSystemAttribute("type", "class");
+        // Register modules for parameter names support
+        xmlMapper.findAndRegisterModules();
     }
 
-    public static XStream getXStream() {
-        return xstream;
+    public static XmlMapper getXmlMapper() {
+        return xmlMapper;
     }
 
-    public static String toXML(Object obj) {
-        return xstream.toXML(obj);
+    public static String toXML(Object obj) throws Exception {
+        return xmlMapper.writeValueAsString(obj);
     }
 
-    public static Object fromXML(String xml) {
-        return xstream.fromXML(xml);
+    public static Object fromXML(String xml) throws Exception {
+        // Use raw ObjectMapper for reading maps since XmlMapper needs type info
+        ObjectMapper mapper = new XmlMapper();
+        return mapper.readValue(xml, Object.class);
+    }
+    
+    public static <T> T fromXML(String xml, Class<T> valueType) throws Exception {
+        return xmlMapper.readValue(xml, valueType);
     }
 }
