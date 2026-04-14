@@ -26,43 +26,40 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import com.fasterxml.jackson.dataformat.xml.ser.ToXmlGenerator;
 
+import java.io.IOException;
+import java.io.Reader;
+import java.io.Writer;
+
 /**
- * XML Binding helper for SCTP using Jackson XML (replaces XStream).
+ * Helper class for XML serialization/deserialization using Jackson XML.
+ * Replaces XStream for SCTP persistence.
  * 
  * @author amit bhayani
  * 
  */
-public class SctpXMLBinding {
-
-    private static final XmlMapper xmlMapper;
+public class SctpXMLHelper {
+    private static final XmlMapper xmlMapper = new XmlMapper();
 
     static {
-        xmlMapper = new XmlMapper();
-        
-        // Configure the mapper
         xmlMapper.enable(SerializationFeature.INDENT_OUTPUT);
         xmlMapper.enable(ToXmlGenerator.Feature.WRITE_XML_DECLARATION);
         xmlMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
         xmlMapper.configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
     }
 
-    public static XmlMapper getXStream() {
-        return xmlMapper;
+    public static void toXML(Object obj, Writer writer) throws IOException {
+        xmlMapper.writeValue(writer, obj);
     }
 
-    public static String toXML(Object obj) {
-        try {
-            return xmlMapper.writeValueAsString(obj);
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to serialize object to XML", e);
-        }
+    public static <T> T fromXML(Reader reader, Class<T> clazz) throws IOException {
+        return xmlMapper.readValue(reader, clazz);
     }
 
-    public static Object fromXML(String xml) {
-        try {
-            return xmlMapper.readValue(xml, Object.class);
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to deserialize XML", e);
-        }
+    public static <T> T fromXML(String xml, Class<T> clazz) throws IOException {
+        return xmlMapper.readValue(xml, clazz);
+    }
+    
+    public static String toXMLString(Object obj) throws IOException {
+        return xmlMapper.writeValueAsString(obj);
     }
 }
