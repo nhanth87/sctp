@@ -37,7 +37,7 @@ import java.io.Writer;
  * @author amit bhayani
  * 
  */
-public class SctpXMLHelper {
+public class SctpJacksonXMLHelper {
     private static final XmlMapper xmlMapper = new XmlMapper();
 
     static {
