@@ -46,9 +46,9 @@ import java.util.concurrent.RejectedExecutionException;
 
 import org.jctools.queues.MpscArrayQueue;
 
-import com.thoughtworks.xstream.annotations.XStreamAlias;
-import com.thoughtworks.xstream.annotations.XStreamAsAttribute;
-import com.thoughtworks.xstream.annotations.XStreamOmitField;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlProperty;
+import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlRootElement;
 
 import org.apache.log4j.Logger;
 import org.mobicents.protocols.api.Association;
@@ -66,45 +66,45 @@ import com.sun.nio.sctp.SctpChannel;
  * @author <a href="mailto:nhanth87@gmail.com">nhanth87</a>
  *
  */
-@XStreamAlias("association")
+@JacksonXmlRootElement(localName = "association")
 public class AssociationImpl implements Association {
 
     protected static final Logger logger = Logger.getLogger(AssociationImpl.class.getName());
 
-    @XStreamAsAttribute
+    @JacksonXmlProperty(isAttribute = true)
     private String hostAddress;
     
-    @XStreamAsAttribute
+    @JacksonXmlProperty(isAttribute = true)
     private int hostPort;
     
-    @XStreamAsAttribute
+    @JacksonXmlProperty(isAttribute = true)
     private String peerAddress;
     
-    @XStreamAsAttribute
+    @JacksonXmlProperty(isAttribute = true)
     private int peerPort;
     
-    @XStreamAsAttribute
+    @JacksonXmlProperty(isAttribute = true)
     private String serverName;
     
-    @XStreamAsAttribute
+    @JacksonXmlProperty(isAttribute = true)
     private String name;
     
-    @XStreamAsAttribute
+    @JacksonXmlProperty(isAttribute = true)
     private IpChannelType ipChannelType;
     
     private String[] extraHostAddresses;
     private String[] extraPeerHostAddresses;
     
-    @XStreamOmitField
+    @JsonIgnore
     private ServerImpl server; // this is filled only for anonymous Associations
 
-    @XStreamAsAttribute
+    @JacksonXmlProperty(isAttribute = true)
     private AssociationType type;
 
-    @XStreamOmitField
+    @JsonIgnore
     private AssociationListener associationListener = null;
 
-    @XStreamOmitField
+    @JsonIgnore
     protected final AssociationHandler associationHandler = new AssociationHandler();
 
     /**
@@ -113,37 +113,37 @@ public class AssociationImpl implements Association {
      * address changes, this variable is set to new value so new messages are
      * now sent to changed peer address
      */
-    @XStreamOmitField
+    @JsonIgnore
     protected volatile SocketAddress peerSocketAddress = null;
 
     // Is the Association been started by management?
-    @XStreamOmitField
+    @JsonIgnore
     private volatile boolean started = false;
     
     // Is the Association up (connection is established)
-    @XStreamOmitField
+    @JsonIgnore
     protected volatile boolean up = false;
 
-    @XStreamOmitField
+    @JsonIgnore
     private int workerThreadTable[] = null;
 
-    @XStreamOmitField
+    @JsonIgnore
     private ConcurrentLinkedQueue<PayloadData> txQueue = new ConcurrentLinkedQueue<PayloadData>();
 
-    @XStreamOmitField
+    @JsonIgnore
     private ManagementImpl management;
 
-    @XStreamOmitField
+    @JsonIgnore
     private SctpChannel socketChannelSctp;
     
-    @XStreamOmitField
+    @JsonIgnore
     private SocketChannel socketChannelTcp;
 
     // The buffer into which we'll read data when it's available
-    @XStreamOmitField
+    @JsonIgnore
     private ByteBuffer rxBuffer;
 
-    @XStreamOmitField
+    @JsonIgnore
     private volatile MessageInfo msgInfo;
 
     /**
@@ -151,7 +151,7 @@ public class AssociationImpl implements Association {
      * in Management, socket will be closed and request to reopen the socket
      * will be initiated
      */
-    @XStreamOmitField
+    @JsonIgnore
     private volatile int ioErrors = 0;
 
     public AssociationImpl() {

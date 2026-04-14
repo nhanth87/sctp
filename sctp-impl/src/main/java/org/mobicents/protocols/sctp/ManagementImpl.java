@@ -55,7 +55,8 @@ import org.mobicents.protocols.api.Server;
 import org.mobicents.protocols.api.ServerListener;
 import org.mobicents.protocols.sctp.netty.NettySctpManagementImpl;
 
-import com.thoughtworks.xstream.XStream;
+import com.fasterxml.jackson.dataformat.xml.XmlMapper;
+import java.io.File;
 
 /**
  * @author <a href="mailto:nhanth87@gmail.com">nhanth87</a>
@@ -436,34 +437,23 @@ public PayloadDataPool.PoolStatistics getPoolStatistics() {
         return this.started;
     }
 
-    @SuppressWarnings("unchecked")
     public void load() throws FileNotFoundException {
-        XStream xstream = SctpXMLBinding.getXStream();
+        XmlMapper xmlMapper = SctpXMLBinding.getXStream();
         
-        try (InputStreamReader reader = new InputStreamReader(new FileInputStream(persistFile.toString()))) {
-            // Read the root element to get individual properties
-            java.util.Map<String, Object> rootMap = (java.util.Map<String, Object>) xstream.fromXML(reader);
+        try {
+            SctpPersistenceData persistData = xmlMapper.readValue(new File(persistFile.toString()), SctpPersistenceData.class);
             
-            if (rootMap != null) {
+            if (persistData != null) {
                 try {
-                    Integer vali = (Integer) rootMap.get(CONNECT_DELAY_PROP);
+                    Integer vali = persistData.getConnectDelay();
                     if (vali != null)
                         this.connectDelay = vali;
-                    vali = (Integer) rootMap.get(WORKER_THREADS_PROP);
-                    Boolean valb = (Boolean) rootMap.get(SINGLE_THREAD_PROP);
-
-                    Double valTH1 = (Double) rootMap.get(NettySctpManagementImpl.CONG_CONTROL_DELAY_THRESHOLD_1);
-                    Double valTH2 = (Double) rootMap.get(NettySctpManagementImpl.CONG_CONTROL_DELAY_THRESHOLD_2);
-                    Double valTH3 = (Double) rootMap.get(NettySctpManagementImpl.CONG_CONTROL_DELAY_THRESHOLD_3);
-                    Double valTB1 = (Double) rootMap.get(NettySctpManagementImpl.CONG_CONTROL_BACK_TO_NORMAL_DELAY_THRESHOLD_1);
-                    Double valTB2 = (Double) rootMap.get(NettySctpManagementImpl.CONG_CONTROL_BACK_TO_NORMAL_DELAY_THRESHOLD_2);
-                    Double valTB3 = (Double) rootMap.get(NettySctpManagementImpl.CONG_CONTROL_BACK_TO_NORMAL_DELAY_THRESHOLD_3);
                 } catch (java.lang.NullPointerException npe) {
                     // ignore.
                     // For backward compatibility we can ignore if these values are not defined
                 }
 
-                CopyOnWriteArrayList<Server> loadedServers = (CopyOnWriteArrayList<Server>) rootMap.get(SERVERS);
+                CopyOnWriteArrayList<Server> loadedServers = persistData.getServers();
                 if (loadedServers != null) {
                     this.servers.addAll(loadedServers);
                 }
@@ -479,7 +469,7 @@ public PayloadDataPool.PoolStatistics getPoolStatistics() {
                     }
                 }
 
-                AssociationMap<String, Association> loadedAssociations = (AssociationMap<String, Association>) rootMap.get(ASSOCIATIONS);
+                AssociationMap<String, Association> loadedAssociations = persistData.getAssociations();
                 if (loadedAssociations != null) {
                     this.associations.putAll(loadedAssociations);
                 }
@@ -487,23 +477,24 @@ public PayloadDataPool.PoolStatistics getPoolStatistics() {
                     ((AssociationImpl) associationTemp).setManagement(this);
                 }
             }
+        } catch (FileNotFoundException e) {
+            throw e;
         } catch (Exception ex) {
             logger.error("Error while loading SCTP configuration from persisted file", ex);
         }
     }
 
     public void store() {
-        XStream xstream = SctpXMLBinding.getXStream();
+        XmlMapper xmlMapper = SctpXMLBinding.getXStream();
         
-        try (OutputStreamWriter writer = new OutputStreamWriter(new FileOutputStream(persistFile.toString()))) {
-            // Create a map to hold all the data
-            java.util.Map<String, Object> rootMap = new java.util.HashMap<>();
+        try {
+            SctpPersistenceData persistData = new SctpPersistenceData();
             
-            rootMap.put(CONNECT_DELAY_PROP, this.connectDelay);
-            rootMap.put(SERVERS, new CopyOnWriteArrayList<>(this.servers));
-            rootMap.put(ASSOCIATIONS, this.associations);
+            persistData.setConnectDelay(this.connectDelay);
+            persistData.setServers(new CopyOnWriteArrayList<>(this.servers));
+            persistData.setAssociations(this.associations);
             
-            xstream.toXML(rootMap, writer);
+            xmlMapper.writeValue(new File(persistFile.toString()), persistData);
         } catch (Exception e) {
             logger.error("Error while persisting the SCTP state in file", e);
         }

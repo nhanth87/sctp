@@ -35,9 +35,9 @@ import com.sun.nio.sctp.SctpStandardSocketOptions;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
-import com.thoughtworks.xstream.annotations.XStreamAlias;
-import com.thoughtworks.xstream.annotations.XStreamAsAttribute;
-import com.thoughtworks.xstream.annotations.XStreamOmitField;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlProperty;
+import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlRootElement;
 
 import org.apache.log4j.Logger;
 import org.jctools.queues.MpscArrayQueue;
@@ -52,55 +52,55 @@ import com.sun.nio.sctp.SctpServerChannel;
  * @author sergey vetyutnev
  *
  */
-@XStreamAlias("server")
+@JacksonXmlRootElement(localName = "server")
 public class ServerImpl implements Server {
 
     private static final Logger logger = Logger.getLogger(ServerImpl.class.getName());
 
     private static final String COMMA = ", ";
 
-    @XStreamAsAttribute
+    @JacksonXmlProperty(isAttribute = true)
     private String name;
     
-    @XStreamAsAttribute
+    @JacksonXmlProperty(isAttribute = true)
     private String hostAddress;
     
-    @XStreamAsAttribute
+    @JacksonXmlProperty(isAttribute = true)
     private int hostPort;
     
-    @XStreamAsAttribute
+    @JacksonXmlProperty(isAttribute = true)
     private volatile boolean started = false;
     
-    @XStreamAsAttribute
+    @JacksonXmlProperty(isAttribute = true)
     private IpChannelType ipChannelType;
     
-    @XStreamAsAttribute
+    @JacksonXmlProperty(isAttribute = true)
     private boolean acceptAnonymousConnections;
     
-    @XStreamAsAttribute
+    @JacksonXmlProperty(isAttribute = true)
     private int maxConcurrentConnectionsCount;
     
     private String[] extraHostAddresses;
 
-    @XStreamAsAttribute
+    @JacksonXmlProperty(isAttribute = true)
     private int maxInputStreams; //32 - 019
     
-    @XStreamAsAttribute
+    @JacksonXmlProperty(isAttribute = true)
 	private int maxOutputStreams; //32 - 019
 
-    @XStreamOmitField
+    @JsonIgnore
 	private ManagementImpl management = null;
 
     protected final CopyOnWriteArrayList<String> associations = new CopyOnWriteArrayList<>();
     
-    @XStreamOmitField
+    @JsonIgnore
     protected final CopyOnWriteArrayList<Association> anonymAssociations = new CopyOnWriteArrayList<>();
 
     // The channel on which we'll accept connections
-    @XStreamOmitField
+    @JsonIgnore
     private SctpServerChannel serverChannelSctp;
     
-    @XStreamOmitField
+    @JsonIgnore
     private ServerSocketChannel serverChannelTcp;
 
 	/**
