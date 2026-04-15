@@ -218,6 +218,8 @@ public class NettySctpChannelInboundHandlerAdapter extends ChannelInboundHandler
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) {
         try {
+            // Retain the message as it may be released by upstream MessageToMessageDecoder
+            ReferenceCountUtil.retain(msg);
             PayloadData payload;
             PayloadDataPool pool = this.association.getManagement().getPayloadDataPool();
             
