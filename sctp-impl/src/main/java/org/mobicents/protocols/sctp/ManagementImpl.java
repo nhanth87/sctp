@@ -438,7 +438,7 @@ public PayloadDataPool.PoolStatistics getPoolStatistics() {
     }
 
     public void load() throws FileNotFoundException {
-        XmlMapper xmlMapper = SctpXMLBinding.getXStream();
+        XmlMapper xmlMapper = SctpXMLBinding.getXmlMapper();
         
         try {
             SctpPersistenceData persistData = xmlMapper.readValue(new File(persistFile.toString()), SctpPersistenceData.class);
@@ -485,7 +485,7 @@ public PayloadDataPool.PoolStatistics getPoolStatistics() {
     }
 
     public void store() {
-        XmlMapper xmlMapper = SctpXMLBinding.getXStream();
+        XmlMapper xmlMapper = SctpXMLBinding.getXmlMapper();
         
         try {
             SctpPersistenceData persistData = new SctpPersistenceData();

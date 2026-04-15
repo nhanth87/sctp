@@ -46,7 +46,7 @@ public class SctpXMLBinding {
         xmlMapper.configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
     }
 
-    public static XmlMapper getXStream() {
+    public static XmlMapper getXmlMapper() {
         return xmlMapper;
     }
 
