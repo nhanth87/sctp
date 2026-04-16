@@ -23,6 +23,7 @@ package org.mobicents.protocols.sctp.netty;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.sctp.SctpChannel;
 import io.netty.handler.codec.sctp.SctpMessageCompletionHandler;
+import io.netty.handler.flush.FlushConsolidationHandler;
 
 /**
  * @author <a href="mailto:amit.bhayani@telestax.com">Amit Bhayani</a>
@@ -42,7 +43,9 @@ public class NettySctpClientChannelInitializer extends ChannelInitializer<SctpCh
 
     @Override
     protected void initChannel(SctpChannel ch) throws Exception {
-        ch.pipeline().addLast(new SctpMessageCompletionHandler(), new NettySctpClientHandler(this.nettyAssociationImpl));
+        ch.config().setWriteBufferHighWaterMark(64 * 1024 * 1024); // 64 MB
+        ch.config().setWriteBufferLowWaterMark(32 * 1024 * 1024);  // 32 MB
+        ch.pipeline().addLast(new SctpMessageCompletionHandler(), new FlushConsolidationHandler(), new NettySctpClientHandler(this.nettyAssociationImpl));
 
     }
 }
