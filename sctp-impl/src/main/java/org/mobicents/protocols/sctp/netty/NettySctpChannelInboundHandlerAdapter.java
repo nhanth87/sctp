@@ -261,14 +261,7 @@ public class NettySctpChannelInboundHandlerAdapter extends ChannelInboundHandler
         }
         
         // Check writability for backpressure handling
-        if (!ch.isWritable()) {
-            // Channel is congested, log warning but still try to write
-            // The write will be queued in Netty's channel outbound buffer
-            if (logger.isEnabledFor(Level.WARN)) {
-                logger.warn(String.format("Channel is congested (not writable) for Association=%s", 
-                        this.association.getName()));
-            }
-        }
+        // Congestion logging removed for high-throughput testing
         
         ChannelFuture future = ch.writeAndFlush(message);
         

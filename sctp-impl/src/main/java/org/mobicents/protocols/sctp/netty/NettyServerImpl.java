@@ -396,18 +396,10 @@ public class NettyServerImpl implements Server {
         b.childOption(SctpChannelOption.SCTP_FRAGMENT_INTERLEAVE, this.management.getOptionSctpFragmentInterleave());
         b.childOption(SctpChannelOption.SCTP_INIT_MAXSTREAMS, this.management.getOptionSctpInitMaxstreams());
         
-        // Socket buffer options - not supported on some platforms (e.g., WSL2)
-        // Skip setting these on Linux/Unix platforms
-        String osName = System.getProperty("os.name").toLowerCase();
-        if (osName.contains("win")) {
-            // Windows supports these options
-            b.childOption(SctpChannelOption.SO_SNDBUF, this.management.getOptionSoSndbuf());
-            b.childOption(SctpChannelOption.SO_RCVBUF, this.management.getOptionSoRcvbuf());
-            b.childOption(SctpChannelOption.SO_LINGER, this.management.getOptionSoLinger());
-        } else {
-            // Linux/Unix/WSL - skip socket buffer options
-            logger.debug("Skipping SO_SNDBUF/SO_RCVBUF/SO_LINGER on non-Windows platform: " + osName);
-        }
+        // Socket buffer options
+        b.childOption(SctpChannelOption.SO_SNDBUF, this.management.getOptionSoSndbuf());
+        b.childOption(SctpChannelOption.SO_RCVBUF, this.management.getOptionSoRcvbuf());
+        b.childOption(SctpChannelOption.SO_LINGER, this.management.getOptionSoLinger());
     }
 
     @Override
