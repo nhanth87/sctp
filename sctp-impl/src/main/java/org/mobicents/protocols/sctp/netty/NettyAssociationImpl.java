@@ -30,7 +30,7 @@ import io.netty.channel.EventLoopGroup;
 import io.netty.channel.sctp.SctpChannel;
 import io.netty.channel.sctp.SctpChannelOption;
 import io.netty.channel.sctp.SctpMessage;
-import io.netty.channel.sctp.nio.NioSctpChannel;
+import org.mobicents.protocols.sctp.netty.PooledNioSctpChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
 
 import java.io.IOException;
@@ -678,7 +678,7 @@ public class NettyAssociationImpl implements Association {
 
             b.group(group);
             if (this.ipChannelType == IpChannelType.SCTP) {
-                b.channel(NioSctpChannel.class);
+                b.channel(PooledNioSctpChannel.class);
 
                 // applying of stack level SCTP options
                 this.applySctpOptions(b);

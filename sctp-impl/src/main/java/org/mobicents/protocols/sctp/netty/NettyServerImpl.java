@@ -26,7 +26,7 @@ import io.netty.channel.ChannelOption;
 import io.netty.channel.ServerChannel;
 import io.netty.channel.sctp.SctpChannelOption;
 import io.netty.channel.sctp.SctpServerChannel;
-import io.netty.channel.sctp.nio.NioSctpServerChannel;
+import org.mobicents.protocols.sctp.netty.PooledNioSctpServerChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
@@ -341,7 +341,7 @@ public class NettyServerImpl implements Server {
         ServerBootstrap b = new ServerBootstrap();
         b.group(this.management.getBossGroup(), this.management.getWorkerGroup());
         if (this.ipChannelType == IpChannelType.SCTP) {
-            b.channel(NioSctpServerChannel.class);
+            b.channel(PooledNioSctpServerChannel.class);
             // SO_BACKLOG not supported on Linux/WSL JDK SCTP implementation
             String osName = System.getProperty("os.name").toLowerCase();
             if (osName.contains("win")) {
