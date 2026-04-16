@@ -1211,11 +1211,10 @@ public class NettySctpManagementImpl implements Management {
             return SctpStandardSocketOptions.InitMaxStreams.create(optionSctpInitMaxstreams_MaxInStreams,
                     optionSctpInitMaxstreams_MaxOutStreams);
         } else {
-            return null;
+            // Default to 256 streams for high-throughput scenarios (v2.0.13)
+            return SctpStandardSocketOptions.InitMaxStreams.create(256, 256);
         }
-    }
-
-    @Override
+    }@Override
     public Integer getOptionSctpInitMaxstreams_MaxOutStreams() {
         return optionSctpInitMaxstreams_MaxOutStreams;
     }

@@ -20,7 +20,9 @@
 
 package org.mobicents.protocols.sctp.netty;
 
+import io.netty.buffer.PooledByteBufAllocator;
 import io.netty.channel.ChannelInitializer;
+import io.netty.channel.FixedRecvByteBufAllocator;
 import io.netty.channel.sctp.SctpChannel;
 import io.netty.handler.codec.sctp.SctpMessageCompletionHandler;
 import io.netty.handler.flush.FlushConsolidationHandler;
@@ -41,10 +43,17 @@ public class NettySctpServerChannelInitializer extends ChannelInitializer<SctpCh
 
     @Override
     protected void initChannel(SctpChannel ch) throws Exception {
-        ch.config().setWriteBufferHighWaterMark(64 * 1024 * 1024); // 64 MB
-        ch.config().setWriteBufferLowWaterMark(32 * 1024 * 1024);  // 32 MB
+        // Use pooled allocator explicitly for consistent performance (Netty 4.2 default has ~80% higher CPU overhead)
+        ch.config().setAllocator(PooledByteBufAllocator.DEFAULT);
+        
+        // Use fixed buffer size for consistent read performance
+        ch.config().setRecvByteBufAllocator(new FixedRecvByteBufAllocator(8192));
+        
+        // Tuned write buffers for high-throughput (reduced from 64MB/32MB to prevent memory bloat)
+        ch.config().setWriteBufferHighWaterMark(16 * 1024 * 1024);  // 16 MB
+        ch.config().setWriteBufferLowWaterMark(8 * 1024 * 1024);   // 8 MB
+        
         ch.pipeline().addLast(new SctpMessageCompletionHandler(), new FlushConsolidationHandler(),
                 new NettySctpServerHandler(this.nettyServerImpl, this.sctpManagementImpl));
     }
-
 }
