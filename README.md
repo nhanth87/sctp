@@ -271,15 +271,10 @@ GNU Affero General Public License v3.0
 
 ---
 
-**Crafted by:** nhanth88  
+**Crafted by:** nhanth87
 **Powered by:** JCTools 4.0.3 | Netty 4.2.11.Final | Java 11  
 **Mission:** Zero-GC telecom infrastructure
 
 ```
-   _____ _______ _____    _   _ 
-  / ____|__   __|  __ \  | \ | |
- | (___    | |  | |__) | |  \| |
-  \___ \   | |  |  ___/  | . ` |
-  ____) |  | |  | |      | |\  |
- |_____/   |_|  |_|      |_| \_|
+sctp
 ```
