@@ -22,7 +22,7 @@
 		<testng.version>6.2</testng.version>
 		<netty.version>4.2.11.Final</netty.version>
 		<compiler.plugin.version>3.8.1</compiler.plugin.version>
-		<compile.source>11</compile.source>
+		<compile.source>1.8</compile.source>
 
 	</properties>
 

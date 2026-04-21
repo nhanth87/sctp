@@ -27,6 +27,7 @@ import org.mobicents.protocols.api.Server;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlElementWrapper;
 import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlProperty;
 import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlRootElement;
@@ -69,10 +70,12 @@ public class SctpPersistData {
 
     @JacksonXmlElementWrapper(localName = "servers")
     @JacksonXmlProperty(localName = "server")
+    @JsonDeserialize(contentAs = NettyServerImpl.class)
     private List<Server> servers;
 
     @JacksonXmlElementWrapper(localName = "associations")
     @JacksonXmlProperty(localName = "association")
+    @JsonDeserialize(as = NettyAssociationMap.class, contentAs = NettyAssociationImpl.class)
     private Map<String, Association> associations;
 
     // Default constructor for Jackson

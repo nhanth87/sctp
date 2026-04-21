@@ -39,7 +39,9 @@ public class NettySctpXMLBinding {
         
         // Configure the mapper
         xmlMapper.configure(ToXmlGenerator.Feature.WRITE_XML_DECLARATION, true);
-        xmlMapper.enable(SerializationFeature.INDENT_OUTPUT);
+        // INDENT_OUTPUT disabled to avoid Stax2WriterAdapter.writeRaw() UnsupportedOperationException
+        // with Jackson-dataformat-xml 2.15.2 + StAX on WildFly 10
+        // xmlMapper.enable(SerializationFeature.INDENT_OUTPUT);
         xmlMapper.disable(SerializationFeature.FAIL_ON_EMPTY_BEANS);
         
         // Register modules for parameter names support

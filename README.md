@@ -1,8 +1,8 @@
-# 🚀 SCTP-NG 2.0.8 - Next Generation Transport
+# 🚀 SCTP-NG 2.0.13 - Next Generation Transport
 
 > **Zero-GC | Lock-Free | 500K+ msg/s | Object Pooling Architecture**
 
-[![SCTP-NG](https://img.shields.io/badge/SCTP--NG-2.0.8-blue.svg)](https://github.com/nhanth87/sctp)
+[![SCTP-NG](https://img.shields.io/badge/SCTP--NG-2.0.13-blue.svg)](https://github.com/nhanth87/sctp)
 [![Performance](https://img.shields.io/badge/Throughput-500K%2B%20msg%2Fs-green.svg)](https://github.com/nhanth87/sctp)
 [![ZeroGC](https://img.shields.io/badge/GC%20Pressure-Near%20Zero-brightgreen.svg)](https://github.com/nhanth87/sctp)
 [![JCTools](https://img.shields.io/badge/Powered%20by-JCTools%204.0.3-orange.svg)](https://github.com/JCTools/JCTools)
@@ -15,8 +15,8 @@
 
 ### 🎯 Design Goals Achieved
 
-| Goal | Classic SCTP | SCTP-NG 2.0.8 | Status |
-|------|--------------|---------------|--------|
+| Goal | Classic SCTP | SCTP-NG 2.0.13 | Status |
+|------|--------------|----------------|--------|
 | **Throughput** | ~50K msg/s | **500K+ msg/s** | ✅ 10x |
 | **Allocations** | Unbounded | **Pooled** | ✅ Bounded |
 | **Latency** | Variable (GC) | **Consistent** | ✅ Low |
@@ -53,7 +53,7 @@ while (true) {
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    SCTP-NG 2.0.8                        │
+│                    SCTP-NG 2.0.13                       │
 ├─────────────────────────────────────────────────────────┤
 │  ┌──────────────┐    ┌──────────────┐    ┌──────────┐  │
 │  │   NIO Path   │───▶│ PayloadData  │───▶│  Pool    │  │
@@ -106,7 +106,7 @@ Classic SCTP (2.0.2):
 - GC pauses: 150ms every 10s
 - Heap growth: Unbounded
 
-SCTP-NG (2.0.8):
+SCTP-NG (2.0.13):
 - Peak: 520K msg/s ✅
 - GC pauses: <5ms
 - Heap: Stable at 2GB
@@ -128,7 +128,7 @@ SCTP-NG (2.0.8):
 <dependency>
     <groupId>org.mobicents.protocols.sctp</groupId>
     <artifactId>sctp-impl</artifactId>
-    <version>2.0.8</version>
+    <version>2.0.13</version>
 </dependency>
 ```
 
@@ -152,16 +152,60 @@ System.out.printf("Hit Rate: %.2f%% | Pool: %d/%d%n",
 
 ---
 
+## 💾 Configuration Persistence
+
+SCTP-NG uses **Jackson XML** for persisting `SCTPManagement` configuration (servers and associations). This replaces the legacy XStream-based serialization for improved Java 17 compatibility and performance.
+
+### Requirements
+- **Woodstox** (`woodstox-core` 6.5.1) is required for StAX compatibility on Java 8 / WildFly 10 environments
+- Jackson XML 2.15.2 (`jackson-dataformat-xml`)
+
+### Config File Format
+The management state is persisted to `SCTPManagement_sctp.xml` with the following structure:
+
+```xml
+<SctpPersistData>
+  <servers>
+    <server>
+      <name>Server1</name>
+      <hostAddress>127.0.0.1</hostAddress>
+      <hostPort>2905</hostPort>
+      <!-- ... -->
+    </server>
+  </servers>
+  <associations>
+    <entry>
+      <key>Assoc1</key>
+      <value>
+        <name>Assoc1</name>
+        <hostAddress>127.0.0.1</hostAddress>
+        <hostPort>2906</hostPort>
+        <peerAddress>127.0.0.1</peerAddress>
+        <peerPort>2907</peerPort>
+        <!-- ... -->
+      </value>
+    </entry>
+  </associations>
+</SctpPersistData>
+```
+
+### Key Implementation Notes
+- `SctpJacksonXMLHelper` configures an explicit `WstxInputFactory` / `WstxOutputFactory` for consistent StAX behavior
+- `SctpPersistData` uses `@JsonDeserialize` annotations to preserve generic type information for `List<Server>` and `Map<String, Association>`
+- Both NIO (`ManagementImpl`) and Netty (`NettySctpManagementImpl`) paths share the same Jackson XML binding layer
+
+---
+
 ## 🧬 Technical Deep Dive
 
 ### Why JCTools MpscArrayQueue?
 
 | Feature | Benefit |
 |---------|---------|
-**Lock-free** | No contention, no blocking
-**MPSC** | Multi-producer (threads), single-consumer (selector)
-**Cache-friendly** | False-sharing protection
-**GC-friendly** | Pre-allocated, zero-allocation hot path
+| **Lock-free** | No contention, no blocking |
+| **MPSC** | Multi-producer (threads), single-consumer (selector) |
+| **Cache-friendly** | False-sharing protection |
+| **GC-friendly** | Pre-allocated, zero-allocation hot path |
 
 ### Adaptive Pool Sizing
 ```java
@@ -185,7 +229,14 @@ try {
 
 ## 📝 Changelog
 
-### v2.0.8 (Current) - "Pool Perfection"
+### v2.0.13 (Current) - "Jackson Persistence"
+- 🔧 Fixed: Jackson XML deserialization with explicit Woodstox factory configuration
+- 🔧 Fixed: Added `@JsonDeserialize` annotations for `List<Server>` and `Map<String, Association>` type info
+- 🔧 Fixed: Various Netty association and management stability fixes
+- ✅ Added: `woodstox-core` dependency for StAX compatibility on Java 8 / WildFly 10
+- 🎨 Improved: Replaced XStream with Jackson XML for Java 17 compatibility
+
+### v2.0.8 - "Pool Perfection"
 - 🔧 Fixed: All objects now pooled (removed non-pooled fallback)
 - 🔧 Fixed: Pool-miss objects returnable to pool
 - 🎨 Improved: .gitignore for AI dev environments
@@ -220,8 +271,8 @@ GNU Affero General Public License v3.0
 
 ---
 
-**Crafted by:** nhanth87  
-**Powered by:** JCTools 4.0.3 | Netty 4.x | Java 11  
+**Crafted by:** nhanth88  
+**Powered by:** JCTools 4.0.3 | Netty 4.2.11.Final | Java 11  
 **Mission:** Zero-GC telecom infrastructure
 
 ```
