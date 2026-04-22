@@ -678,7 +678,14 @@ public class NettyAssociationImpl implements Association {
 
             b.group(group);
             if (this.ipChannelType == IpChannelType.SCTP) {
-                b.channel(PooledNioSctpChannel.class);
+                try {
+                    b.channel(PooledNioSctpChannel.class);
+                } catch (NoClassDefFoundError e) {
+                    logger.error(String.format("SCTP is not available on this OS/JDK for Association=%s. "
+                            + "Please install libsctp1/lksctp-tools or switch to TCP (ipChannelType=\"TCP\")", this.getName()), e);
+                    this.scheduleConnect();
+                    return;
+                }
 
                 // applying of stack level SCTP options
                 this.applySctpOptions(b);
