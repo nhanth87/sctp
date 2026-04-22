@@ -341,7 +341,12 @@ public class NettyServerImpl implements Server {
         ServerBootstrap b = new ServerBootstrap();
         b.group(this.management.getBossGroup(), this.management.getWorkerGroup());
         if (this.ipChannelType == IpChannelType.SCTP) {
-            b.channel(PooledNioSctpServerChannel.class);
+            try {
+                b.channel(PooledNioSctpServerChannel.class);
+            } catch (NoClassDefFoundError e) {
+                throw new Exception("SCTP is not available on this OS/JDK. "
+                        + "Please install libsctp1/lksctp-tools (Linux) or switch to TCP (ipChannelType=\"TCP\")", e);
+            }
             // SO_BACKLOG not supported on Linux/WSL JDK SCTP implementation
             String osName = System.getProperty("os.name").toLowerCase();
             if (osName.contains("win")) {
