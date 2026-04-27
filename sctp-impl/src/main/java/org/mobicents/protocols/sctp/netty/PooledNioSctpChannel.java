@@ -107,7 +107,7 @@ public class PooledNioSctpChannel extends NioSctpChannel {
                 outputBuf.capacity(dataLen);
             }
             outputBuf.clear();
-            data.readBytes(outputBuf);
+            data.readBytes(outputBuf, dataLen);
             nioData = outputBuf.internalNioBuffer(outputBuf.readerIndex(), outputBuf.readableBytes());
         } else {
             // Slow path: need to copy/convert
