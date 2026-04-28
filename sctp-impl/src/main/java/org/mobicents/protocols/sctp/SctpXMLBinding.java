@@ -21,13 +21,24 @@
  */
 package org.mobicents.protocols.sctp;
 
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.module.SimpleModule;
+import com.fasterxml.jackson.databind.JsonDeserializer;
 import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import com.fasterxml.jackson.dataformat.xml.ser.ToXmlGenerator;
 
+import org.mobicents.protocols.api.AssociationType;
+import org.mobicents.protocols.api.IpChannelType;
+
+import java.io.IOException;
+
 /**
  * XML Binding helper for SCTP using Jackson XML (replaces XStream).
+ * Includes custom deserializers for enums to ensure proper deserialization
+ * when loading XML config files.
  * 
  * @author amit bhayani
  * 
@@ -46,6 +57,12 @@ public class SctpXMLBinding {
         xmlMapper.enable(ToXmlGenerator.Feature.WRITE_XML_DECLARATION);
         xmlMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
         xmlMapper.configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
+
+        // Register module with custom enum deserializers
+        SimpleModule sctpEnumModule = new SimpleModule("sctp-enum-module");
+        sctpEnumModule.addDeserializer(IpChannelType.class, new IpChannelTypeDeserializer());
+        sctpEnumModule.addDeserializer(AssociationType.class, new AssociationTypeDeserializer());
+        xmlMapper.registerModule(sctpEnumModule);
     }
 
     public static XmlMapper getXmlMapper() {
@@ -65,6 +82,54 @@ public class SctpXMLBinding {
             return xmlMapper.readValue(xml, Object.class);
         } catch (Exception e) {
             throw new RuntimeException("Failed to deserialize XML", e);
+        }
+    }
+
+    /**
+     * Custom deserializer for IpChannelType enum.
+     * Uses the existing getInstance(String) method to ensure backward compatibility
+     * with javolution XML format.
+     */
+    public static class IpChannelTypeDeserializer extends JsonDeserializer<IpChannelType> {
+        @Override
+        public IpChannelType deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
+            String value = p.getValueAsString();
+            IpChannelType result = IpChannelType.getInstance(value);
+            if (result == null) {
+                // Fallback: try case-insensitive match
+                if ("SCTP".equalsIgnoreCase(value)) {
+                    return IpChannelType.SCTP;
+                } else if ("TCP".equalsIgnoreCase(value)) {
+                    return IpChannelType.TCP;
+                }
+                throw new IOException("Unknown IpChannelType value: " + value);
+            }
+            return result;
+        }
+    }
+
+    /**
+     * Custom deserializer for AssociationType enum.
+     * Uses the existing getAssociationType(String) method to ensure backward compatibility
+     * with javolution XML format.
+     */
+    public static class AssociationTypeDeserializer extends JsonDeserializer<AssociationType> {
+        @Override
+        public AssociationType deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
+            String value = p.getValueAsString();
+            AssociationType result = AssociationType.getAssociationType(value);
+            if (result == null) {
+                // Fallback: try case-insensitive match
+                if ("CLIENT".equalsIgnoreCase(value)) {
+                    return AssociationType.CLIENT;
+                } else if ("SERVER".equalsIgnoreCase(value)) {
+                    return AssociationType.SERVER;
+                } else if ("ANONYMOUS_SERVER".equalsIgnoreCase(value)) {
+                    return AssociationType.ANONYMOUS_SERVER;
+                }
+                throw new IOException("Unknown AssociationType value: " + value);
+            }
+            return result;
         }
     }
 }

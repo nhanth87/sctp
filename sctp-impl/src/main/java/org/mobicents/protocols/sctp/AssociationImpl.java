@@ -36,11 +36,12 @@ import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
+import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
 import java.nio.channels.spi.AbstractSelectableChannel;
-import java.util.concurrent.ConcurrentLinkedQueue;
+import org.jctools.queues.MpscArrayQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
 
@@ -128,7 +129,7 @@ public class AssociationImpl implements Association {
     private int workerThreadTable[] = null;
 
     @JsonIgnore
-    private ConcurrentLinkedQueue<PayloadData> txQueue = new ConcurrentLinkedQueue<PayloadData>();
+    private MpscArrayQueue<PayloadData> txQueue = new MpscArrayQueue<>(8192);
 
     @JsonIgnore
     private ManagementImpl management;
@@ -161,9 +162,9 @@ public class AssociationImpl implements Association {
     protected void initChannels() {
         rxBuffer = ByteBuffer.allocateDirect(management.getBufferSize());
         // clean receiver buffer
-        rxBuffer.clear();
-        rxBuffer.rewind();
-        rxBuffer.flip();
+        ((Buffer) rxBuffer).clear();
+        ((Buffer) rxBuffer).rewind();
+        ((Buffer) rxBuffer).flip();
     }
 
     /**
@@ -625,7 +626,7 @@ public class AssociationImpl implements Association {
 
     private PayloadData doReadSctp() throws IOException {
 
-        rxBuffer.clear();
+        ((Buffer) rxBuffer).clear();
         MessageInfo messageInfo = this.socketChannelSctp.receive(rxBuffer, this, this.associationHandler);
 
         if (messageInfo == null) {
@@ -644,12 +645,12 @@ public class AssociationImpl implements Association {
             return null;
         }
 
-        rxBuffer.flip();
+        ((Buffer) rxBuffer).flip();
         // Use PooledByteBufAllocator for zero-copy-like performance
         // Allocate direct buffer from pool and copy data (avoids heap allocation)
         ByteBuf byteBuf = PooledByteBufAllocator.DEFAULT.directBuffer(len);
         byteBuf.writeBytes(rxBuffer);
-        rxBuffer.clear();
+        ((Buffer) rxBuffer).clear();
 
         // Use PayloadDataPool for object reuse
         PayloadDataPool pool = this.management.getPayloadDataPool();
@@ -661,7 +662,7 @@ public class AssociationImpl implements Association {
 
     private PayloadData doReadTcp() throws IOException {
 
-        rxBuffer.clear();
+        ((Buffer) rxBuffer).clear();
         int len = this.socketChannelTcp.read(rxBuffer);
         if (len == -1) {
             logger.warn(String.format("Rx -1 while trying to read from underlying socket for Association=%s ",
@@ -671,11 +672,11 @@ public class AssociationImpl implements Association {
             return null;
         }
 
-        rxBuffer.flip();
+        ((Buffer) rxBuffer).flip();
         // Use PooledByteBufAllocator for zero-copy-like performance
         ByteBuf byteBuf = PooledByteBufAllocator.DEFAULT.directBuffer(len);
         byteBuf.writeBytes(rxBuffer);
-        rxBuffer.clear();
+        ((Buffer) rxBuffer).clear();
 
         // Use PayloadDataPool for object reuse
         PayloadDataPool pool = this.management.getPayloadDataPool();
@@ -744,7 +745,7 @@ public class AssociationImpl implements Association {
             if (txQueue.isEmpty()) {
                 // We wrote away all data, so we're no longer interested
                 // in writing on this socket. Switch back to waiting for
-                // data.ﬁ
+                // data.fi
                 key.interestOps(SelectionKey.OP_READ);
             }
         } catch (Exception e) {
