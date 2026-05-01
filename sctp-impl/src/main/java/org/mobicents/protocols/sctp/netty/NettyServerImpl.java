@@ -44,6 +44,7 @@ import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlRootElement;
 
 import org.apache.log4j.Logger;
 import org.mobicents.protocols.api.Association;
+import org.mobicents.protocols.api.AssociationType;
 import org.mobicents.protocols.api.IpChannelType;
 import org.mobicents.protocols.api.Server;
 
@@ -300,6 +301,27 @@ public class NettyServerImpl implements Server {
     protected void start() throws Exception {
         this.initSocket();
         this.started = true;
+
+        // Start all SERVER associations bound to this server
+        // SERVER associations can start without listener; listener will be set by M3UA layer later
+
+        for (String assocName : this.associations) {
+            Association assoc = this.management.getAssociation(assocName);
+
+            if (assoc != null && assoc.getAssociationType() == AssociationType.SERVER) {
+
+                try {
+                    if (!assoc.isStarted()) {
+                        this.management.startAssociation(assocName);
+                        if (logger.isInfoEnabled()) {
+                            logger.info(String.format("Started SERVER Association=%s for Server=%s", assocName, this.name));
+                        }
+                    }
+                } catch (Exception e) {
+                    logger.error(String.format("Failed to start SERVER Association=%s for Server=%s", assocName, this.name), e);
+                }
+            }
+        }
 
         if (logger.isInfoEnabled()) {
             logger.info(String.format("Started Server=%s", this.name));

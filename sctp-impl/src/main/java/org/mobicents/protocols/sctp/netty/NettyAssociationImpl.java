@@ -43,6 +43,7 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlProperty;
 import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlRootElement;
 
@@ -102,7 +103,8 @@ public class NettyAssociationImpl implements Association {
     private NettySctpManagementImpl management;
 
     // Is the Association been started by management?
-    @JsonIgnore
+    @JacksonXmlProperty(isAttribute = true)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
     private volatile boolean started = false;
 
     @JsonIgnore
@@ -111,6 +113,12 @@ public class NettyAssociationImpl implements Association {
     // Is the Association up (connection is established)
     @JsonIgnore
     protected volatile boolean up = false;
+
+    @JsonIgnore
+    private int lastMaxInboundStreams = 0;
+
+    @JsonIgnore
+    private int lastMaxOutboundStreams = 0;
 
     @JsonIgnore
     private NettySctpChannelInboundHandlerAdapter channelHandler;
@@ -215,6 +223,7 @@ public class NettyAssociationImpl implements Association {
      * 
      * @see org.mobicents.protocols.api.Association#getAssociationType()
      */
+    @JsonIgnore
     @Override
     public AssociationType getAssociationType() {
         return this.type;
@@ -230,6 +239,14 @@ public class NettyAssociationImpl implements Association {
         return this.name;
     }
 
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public void setAssociationType(AssociationType type) {
+        this.type = type;
+    }
+
     /*
      * (non-Javadoc)
      * 
@@ -240,12 +257,17 @@ public class NettyAssociationImpl implements Association {
         return this.started;
     }
 
+    public void setStarted(boolean started) {
+        this.started = started;
+    }
+
     /*
      * (non-Javadoc)
      * 
      * @see org.mobicents.protocols.api.Association#isConnected()
      */
     @Override
+    @JsonIgnore
     public boolean isConnected() {
         return started && up;
     }
@@ -256,6 +278,7 @@ public class NettyAssociationImpl implements Association {
      * @see org.mobicents.protocols.api.Association#isUp()
      */
     @Override
+    @JsonIgnore
     public boolean isUp() {
         return up;
     }
@@ -278,7 +301,10 @@ public class NettyAssociationImpl implements Association {
     @Override
     public void setAssociationListener(AssociationListener associationListener) {
         this.associationListener = associationListener;
-
+        if (this.up && this.associationListener != null) {
+            logger.warn(String.format("JENNY-LISTENER-SET: Association=%s already UP, notifying listener immediately", this.name));
+            this.associationListener.onCommunicationUp(this, this.lastMaxInboundStreams, this.lastMaxOutboundStreams);
+        }
     }
 
     /*
@@ -426,6 +452,7 @@ public class NettyAssociationImpl implements Association {
     }
 
     @Override
+    @JsonIgnore
     public ByteBufAllocator getByteBufAllocator() {
         if (this.channelHandler != null)
             return this.channelHandler.channel.alloc();
@@ -434,6 +461,7 @@ public class NettyAssociationImpl implements Association {
     }
 
     @Override
+    @JsonIgnore
     public int getCongestionLevel() {
         return this.congLevel;
     }
@@ -508,7 +536,8 @@ public class NettyAssociationImpl implements Association {
         sb.append("Association [name=").append(this.name).append(", associationType=").append(this.type)
                 .append(", ipChannelType=").append(this.ipChannelType).append(", hostAddress=").append(this.hostAddress)
                 .append(", hostPort=").append(this.hostPort).append(", peerAddress=").append(this.peerAddress)
-                .append(", peerPort=").append(this.peerPort).append(", serverName=").append(this.serverName);
+                .append(", peerPort=").append(this.peerPort).append(", serverName=").append(this.serverName)
+                .append(", started=").append(this.started);
 
         sb.append(", extraHostAddress=[");
 
@@ -534,7 +563,11 @@ public class NettyAssociationImpl implements Association {
 
     protected void start() throws Exception {
         if (this.associationListener == null) {
-            throw new NullPointerException(String.format("AssociationListener is null for Association=%s", this.name));
+            if (this.type == AssociationType.SERVER) {
+                logger.warn(String.format("AssociationListener is null for Association=%s. Starting SERVER association anyway. Listener will be set by application layer.", this.name));
+            } else {
+                throw new NullPointerException(String.format("AssociationListener is null for Association=%s", this.name));
+            }
         }
         
         boolean wasFirstStart = this.isFirstStart;
@@ -585,7 +618,11 @@ public class NettyAssociationImpl implements Association {
 
     protected void read(PayloadData payload) {
         try {
-            this.associationListener.onPayload(this, payload);
+            if (this.associationListener != null) {
+                this.associationListener.onPayload(this, payload);
+            } else {
+                logger.warn(String.format("AssociationListener is null for Association=%s. Dropping payload.", this.name));
+            }
         } catch (Exception e) {
             logger.error(String.format("Error while calling Listener for Association=%s.Payload=%s", this.name, payload), e);
         } finally {
@@ -598,6 +635,9 @@ public class NettyAssociationImpl implements Association {
     }
 
     protected void markAssociationUp(int maxInboundStreams, int maxOutboundStreams) {
+        this.lastMaxInboundStreams = maxInboundStreams;
+        this.lastMaxOutboundStreams = maxOutboundStreams;
+        logger.warn(String.format("JENNY-MARK-UP: Association=%s type=%s listener=%s", this.name, this.type, this.getAssociationListener()));
         if (this.server != null) {
             synchronized (this.server.anonymAssociations) {
                 this.server.anonymAssociations.add(this);
@@ -605,7 +645,12 @@ public class NettyAssociationImpl implements Association {
         }
 
         this.up = true;
-        this.getAssociationListener().onCommunicationUp(this, maxInboundStreams, maxOutboundStreams);
+        if (this.getAssociationListener() != null) {
+            logger.warn(String.format("JENNY-MARK-UP: Calling onCommunicationUp for Association=%s", this.name));
+            this.getAssociationListener().onCommunicationUp(this, maxInboundStreams, maxOutboundStreams);
+        } else {
+            logger.warn(String.format("JENNY-MARK-UP: AssociationListener is NULL for Association=%s", this.name));
+        }
 
         for (ManagementEventListener lstr : this.management.getManagementEventListeners()) {
             try {
@@ -629,7 +674,9 @@ public class NettyAssociationImpl implements Association {
                 }
             }
 
-            this.getAssociationListener().onCommunicationShutdown(this);
+            if (this.getAssociationListener() != null) {
+                this.getAssociationListener().onCommunicationShutdown(this);
+            }
 
             if (this.server != null) {
                 synchronized (this.server.anonymAssociations) {
