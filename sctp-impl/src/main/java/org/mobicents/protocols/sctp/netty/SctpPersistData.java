@@ -29,6 +29,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlElementWrapper;
 import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlProperty;
 import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlRootElement;
@@ -77,8 +78,8 @@ public class SctpPersistData {
 
     @JacksonXmlElementWrapper(localName = "associations")
     @JacksonXmlProperty(localName = "association")
-    @JsonDeserialize(as = NettyAssociationMap.class, contentAs = NettyAssociationImpl.class)
-    private Map<String, Association> associations;
+    @JsonDeserialize(contentAs = NettyAssociationImpl.class)
+    private List<NettyAssociationImpl> associations;
 
     // Default constructor for Jackson
     public SctpPersistData() {
@@ -165,11 +166,11 @@ public class SctpPersistData {
         this.servers = servers;
     }
 
-    public Map<String, Association> getAssociations() {
+    public List<NettyAssociationImpl> getAssociations() {
         return associations;
     }
 
-    public void setAssociations(Map<String, Association> associations) {
+    public void setAssociations(List<NettyAssociationImpl> associations) {
         this.associations = associations;
     }
 }

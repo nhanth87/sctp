@@ -84,6 +84,8 @@ public class NettySctpClientHandler extends NettySctpChannelInboundHandlerAdapte
 
         if (association.getIpChannelType() == IpChannelType.TCP) {
             this.association.markAssociationUp(1, 1);
+        } else {
+            logger.warn(String.format("JENNY-CLIENT: channelActive for SCTP Association=%s. Waiting for COMM_UP event.", association.getName()));
         }
     }
 

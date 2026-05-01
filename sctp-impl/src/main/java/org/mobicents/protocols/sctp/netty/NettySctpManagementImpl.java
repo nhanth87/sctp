@@ -170,6 +170,7 @@ public class NettySctpManagementImpl implements Management {
 	 */
     public NettySctpManagementImpl(String name) throws IOException {
         this.name = name;
+
     }
 
     /*
@@ -335,13 +336,13 @@ public class NettySctpManagementImpl implements Management {
             // this.nettyClientOpsThread = new NettyClientOpsThread(this);
             // (new Thread(this.nettyClientOpsThread )).start();
 
+            this.started = true;
+
             try {
                 this.load();
             } catch (FileNotFoundException e) {
                 logger.warn(String.format("Failed to load the SCTP configuration file. \n%s", e.getMessage()));
             }
-
-            this.started = true;
 
             if (logger.isInfoEnabled()) {
                 logger.info(String.format("Started SCTP Management=%s", this.name));
@@ -957,6 +958,7 @@ public class NettySctpManagementImpl implements Management {
      */
     @Override
     public Map<String, Association> getAssociations() {
+
         return this.associations;
     }
 
@@ -1331,11 +1333,65 @@ public class NettySctpManagementImpl implements Management {
         if (loadedServers != null) {
             for (Server server : loadedServers) {
                 if (server instanceof NettyServerImpl) {
+                    NettyServerImpl nettyServer = (NettyServerImpl) server;
+                    // Deduplicate associations loaded from XML to fix corrupted persisted data
+                    java.util.LinkedHashSet<String> dedup = new java.util.LinkedHashSet<String>(nettyServer.associations);
+                    nettyServer.associations.clear();
+                    nettyServer.associations.addAll(dedup);
                     this.servers.add(server);
                 }
             }
         }
 
+        // Load associations FIRST before starting servers
+        // This ensures associations are available when server checks for provisioned connections
+        java.util.List<NettyAssociationImpl> loadedAssociations = persistData.getAssociations();
+        if (loadedAssociations != null) {
+            logger.warn(String.format("JENNY-DEBUG-LOAD: Loaded %d associations from XML", loadedAssociations.size()));
+            for (NettyAssociationImpl assoc : loadedAssociations) {
+                logger.warn(String.format("JENNY-DEBUG-LOAD: assoc=%s started=%s type=%s serverName=%s", 
+                    assoc.getName(), assoc.isStarted(), assoc.getAssociationType(), assoc.getServerName()));
+                if (assoc.getName() != null) {
+                    this.associations.put(assoc.getName(), assoc);
+                }
+            }
+        } else {
+            logger.warn("JENNY-DEBUG-LOAD: No associations loaded from XML (null)");
+        }
+        for (Association associationTemp : this.associations.values()) {
+            NettyAssociationImpl associationImpl = (NettyAssociationImpl) associationTemp;
+            associationImpl.setManagement(this);
+            
+            // Notify listeners that association was loaded from persistence
+            // This allows M3UA layer to set associationListener before server starts
+            for (ManagementEventListener lstr : managementEventListeners) {
+                try {
+                    lstr.onAssociationAdded(associationImpl);
+                } catch (Throwable ee) {
+                    logger.error("Exception while invoking onAssociationAdded for loaded association", ee);
+                }
+            }
+            
+            // Add SERVER associations to their respective server's association list
+            // so that when the server starts, it can start these associations too
+            if (associationImpl.getAssociationType() == AssociationType.SERVER) {
+                String serverName = associationImpl.getServerName();
+                if (serverName != null) {
+                    for (Server server : this.servers) {
+                        if (server.getName().equals(serverName)) {
+                            NettyServerImpl nettyServer = (NettyServerImpl) server;
+                            if (!nettyServer.associations.contains(associationImpl.getName())) {
+                                nettyServer.associations.add(associationImpl.getName());
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Now start servers AFTER associations are loaded
+        // This ensures associations are available when server checks for provisioned connections
         for (Server serverTemp : this.servers) {
             ((NettyServerImpl) serverTemp).setManagement(this);
             if (serverTemp.isStarted()) {
@@ -1345,19 +1401,6 @@ public class NettySctpManagementImpl implements Management {
                     logger.error(String.format("Error while initiating Server=%s", serverTemp.getName()), e);
                 }
             }
-        }
-
-        java.util.Map<String, Association> loadedAssociations = persistData.getAssociations();
-        if (loadedAssociations != null) {
-            for (java.util.Map.Entry<String, Association> entry : loadedAssociations.entrySet()) {
-                if (entry.getValue() instanceof NettyAssociationImpl) {
-                    this.associations.put(entry.getKey(), entry.getValue());
-                }
-            }
-        }
-        for (Association associationTemp : this.associations.values()) {
-            NettyAssociationImpl associationImpl = (NettyAssociationImpl) associationTemp;
-            associationImpl.setManagement(this);
         }
     }
 
@@ -1389,14 +1432,17 @@ public class NettySctpManagementImpl implements Management {
             }
             persistData.setServers(serverList);
             
-            // Create map of associations
-            NettyAssociationMap<String, Association> assocMap = new NettyAssociationMap<String, Association>();
+            // Create list of associations for serialization
+            java.util.List<NettyAssociationImpl> assocList = new java.util.ArrayList<>();
             for (java.util.Map.Entry<String, Association> entry : this.associations.entrySet()) {
                 if (entry.getValue() instanceof NettyAssociationImpl) {
-                    assocMap.put(entry.getKey(), entry.getValue());
+                    NettyAssociationImpl assoc = (NettyAssociationImpl) entry.getValue();
+                    assocList.add(assoc);
+                    logger.warn(String.format("JENNY-DEBUG-STORE: assoc=%s started=%s listener=%s", 
+                        assoc.getName(), assoc.isStarted(), assoc.getAssociationListener()));
                 }
             }
-            persistData.setAssociations(assocMap);
+            persistData.setAssociations(assocList);
 
             xmlMapper.writeValue(new File(persistFile.toString()), persistData);
         } catch (Exception e) {
