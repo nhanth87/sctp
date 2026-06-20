@@ -1,8 +1,8 @@
-# 🚀 SCTP-NG 2.0.13 - Next Generation Transport
+# 🚀 SCTP-NG 2.0.14 - Next Generation Transport
 
 > **Zero-GC | Lock-Free | 500K+ msg/s | Object Pooling Architecture**
 
-[![SCTP-NG](https://img.shields.io/badge/SCTP--NG-2.0.13-blue.svg)](https://github.com/nhanth87/sctp)
+[![SCTP-NG](https://img.shields.io/badge/SCTP--NG-2.0.14-blue.svg)](https://github.com/nhanth87/sctp)
 [![Performance](https://img.shields.io/badge/Throughput-500K%2B%20msg%2Fs-green.svg)](https://github.com/nhanth87/sctp)
 [![ZeroGC](https://img.shields.io/badge/GC%20Pressure-Near%20Zero-brightgreen.svg)](https://github.com/nhanth87/sctp)
 [![JCTools](https://img.shields.io/badge/Powered%20by-JCTools%204.0.3-orange.svg)](https://github.com/JCTools/JCTools)
@@ -76,21 +76,26 @@ while (true) {
 
 ## 🎨 Zero-Copy Buffer Management
 
-### Classic: Copy-on-Read
+SCTP-NG passes **Netty `ByteBuf`** to jSS7 M3UA without heap conversion on the Netty transport path.
+
+### Netty inbound (production path)
 ```java
-// OLD: 2 copies per message
-ByteBuffer nioBuffer = ...;
-ByteBuf nettyBuffer = Unpooled.copiedBuffer(nioBuffer); // Copy #1
-PayloadData payload = new PayloadData(..., nettyBuffer); // Copy #2
+// NettySctpChannelInboundHandlerAdapter
+byteBuf.retain();
+PayloadData payload = pool.acquire(len, byteBuf, ...);
+association.read(payload);
+// M3UA: readSlice().retain() per parameter — see optimizesctpjss7zerocopy.md
 ```
 
-### NG: Zero-Copy with Pooling
+### NIO inbound (legacy path)
 ```java
-// NEW: Zero copy, pool reuse
-ByteBuf buf = PooledByteBufAllocator.DEFAULT.directBuffer(len);
-buf.writeBytes(nioBuffer); // Direct buffer from pool
-PayloadData payload = pool.acquire(len, buf, ...); // Reused object
+// One copy: kernel ByteBuffer → pooled direct ByteBuf
+ByteBuf byteBuf = PooledByteBufAllocator.DEFAULT.directBuffer(len);
+byteBuf.writeBytes(rxBuffer);
+PayloadData payload = pool.acquire(len, byteBuf, ...);
 ```
+
+See **[optimizesctpjss7zerocopy.md](optimizesctpjss7zerocopy.md)** for the full SCTP → M3UA → SCCP pipeline.
 
 ---
 
