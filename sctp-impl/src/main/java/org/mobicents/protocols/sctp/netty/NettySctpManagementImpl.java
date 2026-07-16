@@ -984,7 +984,13 @@ public class NettySctpManagementImpl implements Management {
         }
 
         if (associationTemp.isStarted()) {
-            throw new Exception(String.format("Association=%s is already started", assocName));
+            // Idempotent: starting an already-started association is a no-op, not an error.
+            // jSS7's M3UA startAsp flow (AspFactoryImpl.start) calls startAssociation on server
+            // associations that startServer already brought up; throwing here breaks server start.
+            if (logger.isDebugEnabled()) {
+                logger.debug(String.format("Association=%s is already started - ignoring", assocName));
+            }
+            return;
         }
 
         ((NettyAssociationImpl) associationTemp).start();
@@ -1347,16 +1353,16 @@ public class NettySctpManagementImpl implements Management {
         // This ensures associations are available when server checks for provisioned connections
         java.util.List<NettyAssociationImpl> loadedAssociations = persistData.getAssociations();
         if (loadedAssociations != null) {
-            logger.warn(String.format("JENNY-DEBUG-LOAD: Loaded %d associations from XML", loadedAssociations.size()));
+            logger.debug(String.format("JENNY-DEBUG-LOAD: Loaded %d associations from XML", loadedAssociations.size()));
             for (NettyAssociationImpl assoc : loadedAssociations) {
-                logger.warn(String.format("JENNY-DEBUG-LOAD: assoc=%s started=%s type=%s serverName=%s", 
+                logger.debug(String.format("JENNY-DEBUG-LOAD: assoc=%s started=%s type=%s serverName=%s", 
                     assoc.getName(), assoc.isStarted(), assoc.getAssociationType(), assoc.getServerName()));
                 if (assoc.getName() != null) {
                     this.associations.put(assoc.getName(), assoc);
                 }
             }
         } else {
-            logger.warn("JENNY-DEBUG-LOAD: No associations loaded from XML (null)");
+            logger.debug("JENNY-DEBUG-LOAD: No associations loaded from XML (null)");
         }
         for (Association associationTemp : this.associations.values()) {
             NettyAssociationImpl associationImpl = (NettyAssociationImpl) associationTemp;
@@ -1438,7 +1444,7 @@ public class NettySctpManagementImpl implements Management {
                 if (entry.getValue() instanceof NettyAssociationImpl) {
                     NettyAssociationImpl assoc = (NettyAssociationImpl) entry.getValue();
                     assocList.add(assoc);
-                    logger.warn(String.format("JENNY-DEBUG-STORE: assoc=%s started=%s listener=%s", 
+                    logger.debug(String.format("JENNY-DEBUG-STORE: assoc=%s started=%s listener=%s", 
                         assoc.getName(), assoc.isStarted(), assoc.getAssociationListener()));
                 }
             }

@@ -49,7 +49,7 @@ public class NettySctpServerHandler extends NettySctpChannelInboundHandlerAdapte
     public NettySctpServerHandler(NettyServerImpl serverImpl, NettySctpManagementImpl managementImpl) {
         this.serverImpl = serverImpl;
         this.managementImpl = managementImpl;
-        logger.warn(String.format("JENNY-DEBUG-HANDLER-CTOR: Server=%s, Management hash=%d", serverImpl.getName(), System.identityHashCode(managementImpl)));
+        logger.debug(String.format("JENNY-DEBUG-HANDLER-CTOR: Server=%s, Management hash=%d", serverImpl.getName(), System.identityHashCode(managementImpl)));
     }
 
     @Override
@@ -81,11 +81,11 @@ public class NettySctpServerHandler extends NettySctpChannelInboundHandlerAdapte
         // check if incoming connection request matches with any provisioned
         // ip:port
         Map<String, Association> associations = this.managementImpl.getAssociations();
-        logger.warn(String.format("JENNY-DEBUG-SERVER: Server=%s checking connection from %s:%d, management associations count=%d", 
+        logger.debug(String.format("JENNY-DEBUG-SERVER: Server=%s checking connection from %s:%d, management associations count=%d", 
                 serverImpl.getName(), host, port, associations.size()));
         for (Map.Entry<String, Association> entry : associations.entrySet()) {
             NettyAssociationImpl association = (NettyAssociationImpl) entry.getValue();
-            logger.warn(String.format("JENNY-DEBUG-SERVER: Checking association=%s, serverName=%s, type=%s, peer=%s:%d", 
+            logger.debug(String.format("JENNY-DEBUG-SERVER: Checking association=%s, serverName=%s, type=%s, peer=%s:%d", 
                     association.getName(), association.getServerName(), association.getAssociationType(), 
                     association.getPeerAddress(), association.getPeerPort()));
 

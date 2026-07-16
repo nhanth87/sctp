@@ -90,7 +90,7 @@ public class NettySctpChannelInboundHandlerAdapter extends ChannelInboundHandler
             switch (not.event()) {
 
                 case COMM_UP:
-                    logger.warn(String.format("JENNY-COMM-UP: Association=%s received COMM_UP event", association.getName()));
+                    logger.debug(String.format("JENNY-COMM-UP: Association=%s received COMM_UP event", association.getName()));
                     if (not.association() != null) {
 
                         this.maxOutboundStreams = not.association().maxOutboundStreams();
@@ -239,7 +239,10 @@ logger.info(String.format("Shutdown for Association=%s", association.getName()))
             }
 
             if (logger.isEnabledFor(Level.DEBUG)) {
-                logger.debug(String.format("Rx : Ass=%s %s", this.association.getName(), payload));
+                // Metadata only — PayloadData.toString() hex-dumps the payload on this per-message
+                // receive hot path (HexTools.dump), which dominated CPU under load.
+                logger.debug(String.format("Rx : Ass=%s dataLength=%d streamNumber=%d", this.association.getName(),
+                        payload.getDataLength(), payload.getStreamNumber()));
             }
 
             this.association.read(payload);

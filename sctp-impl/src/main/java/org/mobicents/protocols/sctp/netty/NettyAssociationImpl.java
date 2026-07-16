@@ -302,7 +302,6 @@ public class NettyAssociationImpl implements Association {
     public void setAssociationListener(AssociationListener associationListener) {
         this.associationListener = associationListener;
         if (this.up && this.associationListener != null) {
-            logger.warn(String.format("JENNY-LISTENER-SET: Association=%s already UP, notifying listener immediately", this.name));
             this.associationListener.onCommunicationUp(this, this.lastMaxInboundStreams, this.lastMaxOutboundStreams);
         }
     }
@@ -428,7 +427,10 @@ public class NettyAssociationImpl implements Association {
     @Override
     public void send(PayloadData payloadData) throws Exception {
         if (logger.isDebugEnabled()) {
-            logger.debug(String.format("Tx : Ass=%s %s", this.getName(), payloadData));
+            // Log only metadata on this per-message hot path — NOT PayloadData.toString(),
+            // which hex-dumps the payload (HexTools.dump) and dominated CPU under load.
+            logger.debug(String.format("Tx : Ass=%s dataLength=%d streamNumber=%d", this.getName(),
+                    payloadData.getDataLength(), payloadData.getStreamNumber()));
         }
 
         NettySctpChannelInboundHandlerAdapter handler = checkSocketIsOpen();
@@ -637,7 +639,6 @@ public class NettyAssociationImpl implements Association {
     protected void markAssociationUp(int maxInboundStreams, int maxOutboundStreams) {
         this.lastMaxInboundStreams = maxInboundStreams;
         this.lastMaxOutboundStreams = maxOutboundStreams;
-        logger.warn(String.format("JENNY-MARK-UP: Association=%s type=%s listener=%s", this.name, this.type, this.getAssociationListener()));
         if (this.server != null) {
             synchronized (this.server.anonymAssociations) {
                 this.server.anonymAssociations.add(this);
@@ -646,10 +647,9 @@ public class NettyAssociationImpl implements Association {
 
         this.up = true;
         if (this.getAssociationListener() != null) {
-            logger.warn(String.format("JENNY-MARK-UP: Calling onCommunicationUp for Association=%s", this.name));
             this.getAssociationListener().onCommunicationUp(this, maxInboundStreams, maxOutboundStreams);
         } else {
-            logger.warn(String.format("JENNY-MARK-UP: AssociationListener is NULL for Association=%s", this.name));
+            logger.warn(String.format("AssociationListener is NULL for Association=%s", this.name));
         }
 
         for (ManagementEventListener lstr : this.management.getManagementEventListeners()) {
