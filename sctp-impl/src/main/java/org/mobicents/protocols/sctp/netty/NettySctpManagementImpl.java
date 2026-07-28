@@ -648,7 +648,12 @@ public class NettySctpManagementImpl implements Management {
         for (Server serverTemp : servers) {
             if (serverName.equals(serverTemp.getName())) {
                 if (serverTemp.isStarted()) {
-                    throw new Exception(String.format("Server=%s is already started", serverName));
+                    // Idempotent: Ss7StackBuilder may already have started the server; map/load
+                    // harnesses also call startServer after build.
+                    if (logger.isDebugEnabled()) {
+                        logger.debug(String.format("Server=%s is already started - ignoring", serverName));
+                    }
+                    return;
                 }
                 ((NettyServerImpl) serverTemp).start();
                 this.store();
