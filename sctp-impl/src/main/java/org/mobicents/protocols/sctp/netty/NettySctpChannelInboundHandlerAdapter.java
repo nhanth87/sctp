@@ -90,6 +90,12 @@ public class NettySctpChannelInboundHandlerAdapter extends ChannelInboundHandler
             switch (not.event()) {
 
                 case COMM_UP:
+                    if (this.association == null) {
+                        // Race: COMM_UP before channelRegistered bound the provisioned association.
+                        // NettySctpServerHandler.channelActive/bind will mark up once bound.
+                        logger.warn("COMM_UP received before association was bound to handler; deferring markAssociationUp");
+                        break;
+                    }
                     logger.debug(String.format("JENNY-COMM-UP: Association=%s received COMM_UP event", association.getName()));
                     if (not.association() != null) {
 
