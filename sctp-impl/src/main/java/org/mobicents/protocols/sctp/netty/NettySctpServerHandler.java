@@ -179,8 +179,28 @@ public class NettySctpServerHandler extends NettySctpChannelInboundHandlerAdapte
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
         String name = this.association != null ? this.association.getName() : "<unbound>";
-        logger.error("ExceptionCaught for Association: " + name + "\n", cause);
+        if (isBenignChannelClose(cause)) {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Channel already closed for Association: " + name, cause);
+            }
+        } else {
+            logger.error("ExceptionCaught for Association: " + name + "\n", cause);
+        }
         ctx.close();
+    }
+
+    private static boolean isBenignChannelClose(Throwable cause) {
+        for (Throwable t = cause; t != null; t = t.getCause()) {
+            if (t instanceof java.nio.channels.ClosedChannelException) {
+                return true;
+            }
+            String cn = t.getClass().getName();
+            if ("io.netty.channel.StacklessClosedChannelException".equals(cn)
+                    || "io.netty.channel.ClosedChannelException".equals(cn)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void bindAssociation(ChannelHandlerContext ctx, Channel channel, NettyAssociationImpl assoc) {

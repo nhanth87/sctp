@@ -91,11 +91,32 @@ public class NettySctpClientHandler extends NettySctpChannelInboundHandlerAdapte
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-        // Close the connection when an exception is raised.
-        logger.error("Exception caught for Association: " + this.association.getName() + "\n", cause);
+        // Peer/local teardown commonly surfaces ClosedChannelException — not an
+        // application fault. Keep ERROR for unexpected failures only.
+        if (isBenignChannelClose(cause)) {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Channel already closed for Association: " + this.association.getName(), cause);
+            }
+        } else {
+            logger.error("Exception caught for Association: " + this.association.getName() + "\n", cause);
+        }
         ctx.close();
 
 //        this.association.scheduleConnect();
+    }
+
+    private static boolean isBenignChannelClose(Throwable cause) {
+        for (Throwable t = cause; t != null; t = t.getCause()) {
+            if (t instanceof java.nio.channels.ClosedChannelException) {
+                return true;
+            }
+            String name = t.getClass().getName();
+            if ("io.netty.channel.StacklessClosedChannelException".equals(name)
+                    || "io.netty.channel.ClosedChannelException".equals(name)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // byte [] m3uaMessage = new byte
