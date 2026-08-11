@@ -1,7 +1,10 @@
 # vendor/f-stack
 
-Pinned local checkout of [F-Stack](https://github.com/F-Stack/f-stack) `v1.25`
-(`761639943bdda33103aa98241ca6a3079f1c1b7e`).
+Pinned local checkout of [nhanth87/f-stack](https://github.com/nhanth87/f-stack) `v1.25`
+(`761639943bdda33103aa98241ca6a3079f1c1b7e`), public fork of
+[F-Stack/f-stack](https://github.com/F-Stack/f-stack). Use this URL for DPDK
+on-wire builds (QEMU virtio or physical NIC). The GitHub tree includes
+`freebsd/` + `dpdk/`; this working tree still omits `freebsd/`.
 
 The working tree is gitignored. Recreate with:
 

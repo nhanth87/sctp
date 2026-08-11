@@ -6,6 +6,7 @@
   "fstack": {
     "pinPolicy": "exact-commit",
     "upstream": "https://github.com/F-Stack/f-stack",
+    "publicPin": "https://github.com/nhanth87/f-stack",
     "tag": "v1.25",
     "commit": "761639943bdda33103aa98241ca6a3079f1c1b7e",
     "localPath": "sctp-native-fstack/vendor/f-stack",
