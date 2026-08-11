@@ -139,9 +139,11 @@ SCTP-NG (2.0.13):
 
 ### Quick Start
 ```java
-// Create management with pooling
-ManagementImpl mgmt = new ManagementImpl("SCTP-NG");
-mgmt.start();
+import org.mobicents.protocols.api.Management;
+import org.mobicents.protocols.sctp.spi.SctpProvider;
+
+// Default: F-Stack. Netty is JVM-only fallback if F-Stack cannot start.
+Management mgmt = SctpProvider.createStarted("SCTP-NG");
 
 // Pool auto-initializes with 100K capacity
 PayloadDataPool pool = mgmt.getPayloadDataPool();

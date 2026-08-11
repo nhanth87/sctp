@@ -14,6 +14,6 @@ git sparse-checkout set adapter app doc docs dpdk example lib mk tests tools
 git checkout
 ```
 
-`freebsd/` is excluded on purpose (BSD-4-Clause advertising clause + we are
-not shipping the FreeBSD network stack). `lib/Makefile` still has
-`S=${TOPDIR}/freebsd` — that path must stay empty.
+`freebsd/` is excluded on purpose. Do not build `lib/` against
+`S=${TOPDIR}/freebsd`. Default sockets are lksctp (`SCTP_HAVE_FSTACK=ON`).
+Netty is the JVM fallback, not the default.

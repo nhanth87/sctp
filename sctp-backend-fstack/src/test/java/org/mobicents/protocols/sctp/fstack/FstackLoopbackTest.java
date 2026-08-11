@@ -75,12 +75,14 @@ class FstackLoopbackTest {
     }
 
     @Test
-    void nativeImageForbidsNettyBackendClassName() {
+    void providerDefaultIsFstackNotNetty() throws Exception {
         assertFalse(org.mobicents.protocols.sctp.spi.SctpBackend.NETTY_KERNEL.nativeSafe());
         assertTrue(org.mobicents.protocols.sctp.spi.SctpBackend.FSTACK_DPDK.nativeSafe());
         assertEquals("org.mobicents.protocols.sctp.fstack.FstackSctpManagementImpl",
                 org.mobicents.protocols.sctp.spi.SctpProvider.implementationClass(
                         org.mobicents.protocols.sctp.spi.SctpBackend.FSTACK_DPDK));
+        assertTrue(org.mobicents.protocols.sctp.spi.SctpProvider.create("default")
+                instanceof FstackSctpManagementImpl);
     }
 
     private static class RecordingListener implements AssociationListener {

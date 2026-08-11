@@ -29,9 +29,18 @@ void test_abi_layout() {
     int caps = sctp_fs_capabilities();
     CHECK((caps & SCTP_FS_CAP_LOOPBACK) != 0);
     CHECK((caps & SCTP_FS_CAP_MULTISTREAM) != 0);
-#ifndef SCTP_HAVE_FSTACK
-    CHECK((caps & SCTP_FS_CAP_DPDK) == 0);
+#ifdef SCTP_HAVE_FSTACK
+    int fd = sctp_fs_socket(AF_INET);
+    CHECK(fd >= 0);
+    if (fd >= 0) {
+        ::close(fd);
+    }
+    CHECK((caps & SCTP_FS_CAP_MULTIHOMING) != 0);
+#else
     CHECK(sctp_fs_socket(AF_INET) < 0);
+#endif
+#ifndef SCTP_HAVE_DPDK
+    CHECK((caps & SCTP_FS_CAP_DPDK) == 0);
 #endif
 }
 

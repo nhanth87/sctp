@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 /**
  * Maps RFC 9260 (obsoletes 4960) and RFC 4666 MUST rules to the layer that
  * owns them. Java/sctp-fs implements the ULP adapter + STP AIMD. Transport
- * cwnd/ssthresh/rwnd/INIT-COOKIE live in FreeBSD SCTP / usrsctp (DPDK gates).
+ * cwnd/ssthresh/rwnd/INIT-COOKIE live in lksctp / usrsctp (DPDK gates).
  *
  * <p>Do not mark a DPDK row green from this class.
  */

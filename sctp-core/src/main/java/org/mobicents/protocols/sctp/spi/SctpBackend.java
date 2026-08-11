@@ -1,8 +1,8 @@
 package org.mobicents.protocols.sctp.spi;
 
 /**
- * Build-time / boot-time SCTP provider. Native GMLC may only load {@link #FSTACK_DPDK}.
- * {@link #NETTY_KERNEL} stays on the JVM oracle path and must not be reachable from a
+ * Build-time / boot-time SCTP provider. {@link #FSTACK_DPDK} is the default.
+ * {@link #NETTY_KERNEL} is the JVM-only fallback and must not be reachable from a
  * GraalVM native image (it pulls {@code com.sun.nio.sctp}).
  */
 public enum SctpBackend {

@@ -54,7 +54,7 @@ public final class FstackSctpManagementImpl implements Management {
     private volatile ServerListener serverListener;
     private volatile PayloadDataPool payloadDataPool = new PayloadDataPool();
     private volatile SctpTransportMode mode = SctpTransportMode.from(System.getProperty("sctp.fstack.mode"));
-    private volatile SctpDataplane dataplane = SctpDataplane.from(System.getProperty("sctp.fstack.dataplane", "LOOPBACK"));
+    private volatile SctpDataplane dataplane = SctpDataplane.from(System.getProperty("sctp.fstack.dataplane"));
     private volatile FstackDataplaneClient dataplaneClient;
     private volatile AdaptiveSendController adaptive = AdaptiveSendController.createDefault();
 

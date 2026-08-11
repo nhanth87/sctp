@@ -2,22 +2,29 @@
 
 Reusable SCTP data plane (sidecar + GraalVM 25 FFM). Not tied to a single app.
 
+**Default backend is F-Stack** (`sctp.backend=FSTACK_DPDK`). Netty / `com.sun.nio.sctp`
+is the JVM-only fallback (`sctp.backend=NETTY_KERNEL` or start failure when
+`sctp.backend.fallback=true`). GraalVM native images must not load Netty.
+
 - C ABI: [`include/sctp_abi.h`](include/sctp_abi.h)
 - SHM rings: [`include/sctp_ring.h`](include/sctp_ring.h)
 - Sidecar: `sctp-fstack` (UDS control + SHM payload + eventfd wakeup)
 - Shared library: `libsctp_fstack.so`
-- Local F-Stack: [`vendor/f-stack`](vendor/f-stack) — pin `v1.25` / `761639943bdda33103aa98241ca6a3079f1c1b7e` in [`provenance.json`](provenance.json)
-- `freebsd/` is **not** present (stripped). Do not re-enable FreeBSD SCTP sources.
-
-Stock F-Stack does **not** ship a usable SCTP stack. `SCTP_HAVE_FSTACK=ON`
-is off until the conformance suite is green. Fallback: usrsctp + DPDK.
+- Local F-Stack tree: [`vendor/f-stack`](vendor/f-stack) — pin in [`provenance.json`](provenance.json)
+- `freebsd/` is **not** present. `SCTP_HAVE_FSTACK` is **ON** and talks lksctp
+  (`libsctp`). `SCTP_HAVE_DPDK` stays off until a NIC gate is green.
 
 ```bash
 ./scripts/run-native-tests.sh
 ./build/sctp-fstack --socket data/sctp-fstack.sock --ring-dir data
 ```
 
-LOOPBACK Java tests do not require DPDK. Production DPDK needs hugepages + `vfio-pci`.
+```java
+Management mgmt = SctpProvider.createStarted("SCTP"); // F-Stack, Netty only if start fails
+```
+
+LOOPBACK Java tests do not require DPDK. Production DPDK needs hugepages + `vfio-pci`
+and `-DSCTP_HAVE_DPDK=ON`.
 
 ## GraalVM + SS7
 

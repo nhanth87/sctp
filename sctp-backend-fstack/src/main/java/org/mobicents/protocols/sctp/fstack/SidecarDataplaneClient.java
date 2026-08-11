@@ -131,7 +131,7 @@ final class SidecarDataplaneClient implements FstackDataplaneClient {
     private void requireDataplaneCapability() {
         if (management.dataplane() == SctpDataplane.DPDK && (negotiatedCaps & FstackAbi.CAP_DPDK) == 0) {
             throw new IllegalStateException(
-                    "sctp-fstack sidecar has no DPDK capability — rebuild with SCTP_HAVE_FSTACK=ON "
+                    "sctp-fstack sidecar has no DPDK capability — rebuild with SCTP_HAVE_DPDK=ON "
                             + "or set SCTP_FS_EMULATE_DPDK=1 for the software app-test path");
         }
     }

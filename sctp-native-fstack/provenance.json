@@ -1,6 +1,7 @@
 {
   "abiVersion": 1,
   "defaultBackend": "FSTACK_DPDK",
+  "fallbackBackend": "NETTY_KERNEL",
   "defaultMode": "SIDECAR",
   "fstack": {
     "pinPolicy": "exact-commit",
@@ -9,7 +10,8 @@
     "commit": "761639943bdda33103aa98241ca6a3079f1c1b7e",
     "localPath": "sctp-native-fstack/vendor/f-stack",
     "stripped": ["freebsd/"],
-    "note": "Local sparse clone of tag v1.25. freebsd/ (FreeBSD net stack, BSD-4-Clause advertising clause) is excluded on purpose — do not restore it into this tree. Stock F-Stack lib still points S=${TOPDIR}/freebsd; lib/ will not build until a non-BSD stack is wired. Do not track F-Stack dev HEAD."
+    "sctpSockets": "lksctp (SCTP_HAVE_FSTACK=ON by default)",
+    "note": "F-Stack is the default backend. freebsd/ is excluded (advertising clause). Native sockets use lksctp, not vendor lib/Makefile. DPDK is SCTP_HAVE_DPDK (off until NIC gate). Netty is JVM-only fallback. Do not track F-Stack dev HEAD."
   },
   "dpdk": {
     "pinPolicy": "LTS",
@@ -18,6 +20,7 @@
   "licenses": [
     "F-Stack core: BSD-2-Clause",
     "DPDK userspace: BSD-3-Clause",
-    "DPDK kernel modules (do not ship igb_uio): GPL-2.0"
+    "DPDK kernel modules (do not ship igb_uio): GPL-2.0",
+    "lksctp-tools: LGPL-2.1"
   ]
 }
