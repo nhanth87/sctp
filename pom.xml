@@ -28,7 +28,9 @@
 
 	<modules>
 		<module>sctp-api</module>
+		<module>sctp-core</module>
 		<module>sctp-impl</module>
+		<module>sctp-backend-fstack</module>
 	</modules>
 
 	<dependencyManagement>

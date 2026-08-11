@@ -135,6 +135,9 @@ sctp-impl/netty-server-management_sctp.xml
 .project
 .vim/
 
+# Vendored F-Stack working tree (pin SHA in sctp-native-fstack/provenance.json)
+/sctp-native-fstack/vendor/f-stack/
+
 ##############################
 ## AI/Agent directories
 ##############################
