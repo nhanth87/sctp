@@ -37,7 +37,7 @@ class DpdkFailClosedTest {
         Path binary = FstackNativePaths.sidecarBinary();
         assumeTrue(binary != null && Files.isExecutable(binary), "sctp-fstack binary missing");
         Path sock = tmp.resolve("sctp-fstack.sock");
-        // Sidecar started WITHOUT SCTP_FS_EMULATE_DPDK — advertises no CAP_DPDK.
+        // LOOPBACK sidecar never advertises production DPDK/F-Stack SCTP readiness.
         Process sidecar = new ProcessBuilder(binary.toString(), "--socket", sock.toString(),
                 "--ring-dir", tmp.toString())
                 .redirectErrorStream(true)
@@ -51,7 +51,7 @@ class DpdkFailClosedTest {
             mgmt.setMode(SctpTransportMode.SIDECAR);
             mgmt.setDataplane(SctpDataplane.DPDK);
             IllegalStateException ex = assertThrows(IllegalStateException.class, mgmt::start);
-            assertTrue(ex.getMessage().contains("DPDK capability"), ex.getMessage());
+            assertTrue(ex.getMessage().contains("validated F-Stack SCTP + DPDK"), ex.getMessage());
             assertFalse(mgmt.isStarted(), "DPDK must fail closed when the sidecar lacks CAP_DPDK");
         } finally {
             sidecar.destroyForcibly();

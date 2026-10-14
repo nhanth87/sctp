@@ -1,6 +1,6 @@
 # Fallback when CMake is broken (AppImage CMAKE_ROOT / COLLECT_GCC).
 CXX ?= /usr/bin/g++
-CXXFLAGS ?= -std=c++20 -O2 -DSCTP_HAVE_FSTACK
+CXXFLAGS ?= -std=c++20 -O2 -DSCTP_HAVE_LKSCTP
 INCLUDES = -Iinclude
 LIBS = -lsctp
 BUILD = build

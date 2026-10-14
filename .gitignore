@@ -154,3 +154,9 @@ sctp-impl/netty-server-management_sctp.xml
 .continue/
 .odo/
 .ssh/
+
+##############################
+## F-Stack / DPDK native build output
+##############################
+sctp-native-fstack/build-dpdk/
+sctp-native-fstack/build/

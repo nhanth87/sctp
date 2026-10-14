@@ -71,9 +71,10 @@ final class FfmDataplaneClient implements FstackDataplaneClient {
             if ((caps & FstackAbi.CAP_LOOPBACK) == 0 && (caps & FstackAbi.CAP_DPDK) == 0) {
                 throw new IllegalStateException("native library advertised no usable capability");
             }
-            if (management.dataplane() == SctpDataplane.DPDK && (caps & FstackAbi.CAP_DPDK) == 0) {
+            int required = FstackAbi.CAP_DPDK | FstackAbi.CAP_FSTACK_SCTP;
+            if (management.dataplane() == SctpDataplane.DPDK && (caps & required) != required) {
                 throw new IllegalStateException(
-                        "libsctp_fstack.so has no DPDK capability — rebuild with SCTP_HAVE_DPDK=ON");
+                        "libsctp_fstack.so is not initialized with validated F-Stack SCTP + DPDK");
             }
             registerUpcall(linker);
         } catch (Throwable t) {

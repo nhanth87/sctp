@@ -90,6 +90,7 @@ final class SidecarDataplaneClient implements FstackDataplaneClient {
     @Override
     public void open(FstackAssociationImpl association) {
         String extra = association.getName() + "\n"
+                + association.getAssociationType().name() + "\n"
                 + nullToEmpty(association.getHostAddress()) + "\n"
                 + nullToEmpty(association.getPeerAddress()) + "\n";
         writeFrame(FstackAbi.CMD_OPEN, association.associationId(), 0, association.getHostPort(),
@@ -129,10 +130,11 @@ final class SidecarDataplaneClient implements FstackDataplaneClient {
     }
 
     private void requireDataplaneCapability() {
-        if (management.dataplane() == SctpDataplane.DPDK && (negotiatedCaps & FstackAbi.CAP_DPDK) == 0) {
+        int required = FstackAbi.CAP_DPDK | FstackAbi.CAP_FSTACK_SCTP;
+        if (management.dataplane() == SctpDataplane.DPDK && (negotiatedCaps & required) != required) {
             throw new IllegalStateException(
-                    "sctp-fstack sidecar has no DPDK capability — rebuild with SCTP_HAVE_DPDK=ON "
-                            + "or set SCTP_FS_EMULATE_DPDK=1 for the software app-test path");
+                    "sctp-fstack sidecar is not ready with validated F-Stack SCTP + DPDK; "
+                            + "LOOPBACK is a separate lab dataplane and cannot satisfy DPDK");
         }
     }
 

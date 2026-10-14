@@ -10,21 +10,24 @@ is the JVM-only fallback (`sctp.backend=NETTY_KERNEL` or start failure when
 - SHM rings: [`include/sctp_ring.h`](include/sctp_ring.h)
 - Sidecar: `sctp-fstack` (UDS control + SHM payload + eventfd wakeup)
 - Shared library: `libsctp_fstack.so`
-- Public pin: [nhanth87/f-stack](https://github.com/nhanth87/f-stack) `v1.25` — local tree [`vendor/f-stack`](vendor/f-stack), SHA in [`provenance.json`](provenance.json)
-- `freebsd/` is **not** present. `SCTP_HAVE_FSTACK` is **ON** and talks lksctp
-  (`libsctp`). `SCTP_HAVE_DPDK` stays off until a NIC gate is green.
+- Public pin: [nhanth87/f-stack](https://github.com/nhanth87/f-stack) `v1.25` — full local tree
+  [`vendor/f-stack`](vendor/f-stack), SHA in [`provenance.json`](provenance.json).
+- `SCTP_HAVE_LKSCTP=ON` is the explicit Linux-kernel lab/test build.
+- `SCTP_HAVE_FSTACK_DPDK=ON` validates and links the SCTP-enabled v1.25 fork.
+  The fork compiles the complete IPv4/IPv6 FreeBSD SCTP source set; the archive
+  gate checks endpoint symbols so an `alias_sctp.c`-only build cannot pass.
 
 ```bash
 ./scripts/run-native-tests.sh
-./build/sctp-fstack --socket data/sctp-fstack.sock --ring-dir data
+./build/sctp-fstack --socket data/sctp-fstack.sock --ring-dir data --dataplane LOOPBACK
 ```
 
 ```java
 Management mgmt = SctpProvider.createStarted("SCTP"); // F-Stack, Netty only if start fails
 ```
 
-LOOPBACK Java tests do not require DPDK. Production DPDK needs hugepages + `vfio-pci`
-and `-DSCTP_HAVE_DPDK=ON`.
+LOOPBACK Java tests do not require DPDK. Production host and on-wire acceptance
+gates are documented in [`docs/production-dpdk.md`](docs/production-dpdk.md).
 
 ## GraalVM + SS7
 

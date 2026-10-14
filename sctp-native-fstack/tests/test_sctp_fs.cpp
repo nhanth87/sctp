@@ -29,7 +29,7 @@ void test_abi_layout() {
     int caps = sctp_fs_capabilities();
     CHECK((caps & SCTP_FS_CAP_LOOPBACK) != 0);
     CHECK((caps & SCTP_FS_CAP_MULTISTREAM) != 0);
-#ifdef SCTP_HAVE_FSTACK
+#ifdef SCTP_HAVE_LKSCTP
     int fd = sctp_fs_socket(AF_INET);
     CHECK(fd >= 0);
     if (fd >= 0) {
@@ -39,9 +39,10 @@ void test_abi_layout() {
 #else
     CHECK(sctp_fs_socket(AF_INET) < 0);
 #endif
-#ifndef SCTP_HAVE_DPDK
     CHECK((caps & SCTP_FS_CAP_DPDK) == 0);
-#endif
+    CHECK((caps & SCTP_FS_CAP_FSTACK_SCTP) == 0);
+    CHECK(sctp_fs_dpdk_ready() == 0);
+    CHECK(sctp_fs_dpdk_init(0, nullptr) < 0);
 }
 
 void test_rfc4666_and_generation() {

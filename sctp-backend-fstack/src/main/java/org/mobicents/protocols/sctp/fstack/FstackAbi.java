@@ -10,6 +10,7 @@ public final class FstackAbi {
     public static final int CAP_DPDK = 1 << 1;
     public static final int CAP_MULTIHOMING = 1 << 2;
     public static final int CAP_MULTISTREAM = 1 << 3;
+    public static final int CAP_FSTACK_SCTP = 1 << 4;
     public static final int MAGIC = 0x53465431; // 'SFT1'
     public static final int FRAME_SIZE = 48;
     public static final int M3UA_MANAGEMENT_STREAM = 0;

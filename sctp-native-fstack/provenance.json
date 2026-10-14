@@ -10,9 +10,9 @@
     "tag": "v1.25",
     "commit": "761639943bdda33103aa98241ca6a3079f1c1b7e",
     "localPath": "sctp-native-fstack/vendor/f-stack",
-    "stripped": ["freebsd/"],
-    "sctpSockets": "lksctp (SCTP_HAVE_FSTACK=ON by default)",
-    "note": "F-Stack is the default backend. freebsd/ is excluded (advertising clause). Native sockets use lksctp, not vendor lib/Makefile. DPDK is SCTP_HAVE_DPDK (off until NIC gate). Netty is JVM-only fallback. Do not track F-Stack dev HEAD."
+    "requiredTrees": ["freebsd/", "dpdk/", "lib/"],
+    "sctpSockets": "source-complete: local v1.25 fork builds and links FreeBSD IPv4/IPv6 SCTP; on-wire acceptance requires a prepared DPDK host",
+    "note": "SCTP_HAVE_LKSCTP is lab-only. SCTP_HAVE_FSTACK_DPDK validates source and archive symbols, links libfstack+DPDK, runs ff_init, and probes ff_socket(SCTP) before advertising readiness. Do not track F-Stack dev HEAD."
   },
   "dpdk": {
     "pinPolicy": "LTS",

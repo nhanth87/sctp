@@ -3,6 +3,7 @@
 #include "shm_ring.cpp"
 
 #include <algorithm>
+#include <arpa/inet.h>
 #include <cerrno>
 #include <cstdio>
 #include <cstring>
@@ -13,6 +14,7 @@
 #include <string>
 #include <unistd.h>
 #include <vector>
+#include <netdb.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 
@@ -33,8 +35,14 @@ struct Assoc {
     int host_port = 0;
     std::string peer;
     int peer_port = 0;
+    bool server = false;
     bool open = false;
+    bool up = false;
+    int listen_fd = -1;
+    int network_fd = -1;
 };
+
+enum class Dataplane { LOOPBACK, DPDK };
 
 static int read_fully(int fd, void* buf, size_t n) {
     auto* p = static_cast<unsigned char*>(buf);
@@ -122,6 +130,72 @@ static void bring_up(std::vector<Client>& clients, Assoc& a, Assoc& b) {
     }
 }
 
+static void bring_up(std::vector<Client>& clients, Assoc& assoc) {
+    if (assoc.up) {
+        return;
+    }
+    assoc.generation = assoc.generation == 0 ? 1 : assoc.generation + 1;
+    assoc.up = true;
+    Client* client = find_client(clients, assoc.client_id);
+    if (client != nullptr) {
+        reply(client->fd, SCTP_FS_EVT_UP, assoc.assoc_id, assoc.generation, "");
+    }
+}
+
+static int endpoint(const std::string& host, int port, sockaddr_storage& storage, socklen_t& len) {
+    addrinfo hints {};
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_protocol = IPPROTO_SCTP;
+    addrinfo* result = nullptr;
+    std::string service = std::to_string(port);
+    int rc = ::getaddrinfo(host.c_str(), service.c_str(), &hints, &result);
+    if (rc != 0 || result == nullptr || result->ai_addrlen > sizeof(storage)) {
+        return -1;
+    }
+    std::memcpy(&storage, result->ai_addr, result->ai_addrlen);
+    len = static_cast<socklen_t>(result->ai_addrlen);
+    ::freeaddrinfo(result);
+    return 0;
+}
+
+static bool open_network(Assoc& assoc) {
+    sockaddr_storage local {};
+    sockaddr_storage peer {};
+    socklen_t local_len = 0;
+    socklen_t peer_len = 0;
+    if (endpoint(assoc.host, assoc.host_port, local, local_len) != 0
+            || endpoint(assoc.peer, assoc.peer_port, peer, peer_len) != 0) {
+        std::cerr << "invalid SCTP endpoint assoc=" << assoc.assoc_id << '\n';
+        return false;
+    }
+    int fd = sctp_fs_socket(reinterpret_cast<sockaddr*>(&local)->sa_family);
+    if (fd < 0 || sctp_fs_set_nonblocking(fd) != 0
+            || sctp_fs_bindx(fd, &local, 1, 0) != 0) {
+        std::cerr << "F-Stack SCTP bind failed assoc=" << assoc.assoc_id
+                  << " error=" << sctp_fs_last_error() << " errno=" << errno << '\n';
+        if (fd >= 0) sctp_fs_close_fd(fd);
+        return false;
+    }
+    if (assoc.server) {
+        if (sctp_fs_listen(fd, 16) != 0) {
+            sctp_fs_close_fd(fd);
+            return false;
+        }
+        assoc.listen_fd = fd;
+        return true;
+    }
+    assoc.network_fd = fd;
+    int rc = sctp_fs_connectx(fd, &peer, 1, nullptr);
+    return rc == 0 || errno == EINPROGRESS || errno == EAGAIN;
+}
+
+static bool send_network(const Assoc& assoc, const sctp_fs_ring_slot_t& slot) {
+    return assoc.network_fd >= 0
+            && sctp_fs_sendv(assoc.network_fd, slot.payload, static_cast<size_t>(slot.payload_len),
+                    slot.stream_id, slot.ppid, (slot.flags & SCTP_FS_FLAG_UNORDERED) != 0) >= 0;
+}
+
 static bool forward_payload(std::vector<Client>& clients, std::vector<Assoc>& assocs,
         int src_client, const sctp_fs_ring_slot_t& in) {
     Assoc* src = find_assoc(assocs, src_client, in.association_id);
@@ -174,13 +248,46 @@ static void drop_client(std::vector<Client>& clients, std::vector<Assoc>& assocs
 int main(int argc, char** argv) {
     std::string path = "data/sctp-fstack.sock";
     std::string ring_dir = "data";
+    std::string dataplane_name = "LOOPBACK";
+    std::string fstack_config;
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "--socket" && i + 1 < argc) {
             path = argv[++i];
         } else if (arg == "--ring-dir" && i + 1 < argc) {
             ring_dir = argv[++i];
+        } else if (arg == "--dataplane" && i + 1 < argc) {
+            dataplane_name = argv[++i];
+        } else if (arg == "--fstack-config" && i + 1 < argc) {
+            fstack_config = argv[++i];
+        } else {
+            std::cerr << "unknown or incomplete argument: " << arg << '\n';
+            return 2;
         }
+    }
+    Dataplane dataplane;
+    if (dataplane_name == "LOOPBACK") {
+        dataplane = Dataplane::LOOPBACK;
+    } else if (dataplane_name == "DPDK") {
+        dataplane = Dataplane::DPDK;
+        if (fstack_config.empty()) {
+            std::cerr << "DPDK requires --fstack-config <path>\n";
+            return 2;
+        }
+        std::string conf_arg = "--conf=" + fstack_config;
+        char app[] = "sctp-fstack";
+        std::vector<char> conf(conf_arg.begin(), conf_arg.end());
+        conf.push_back('\0');
+        char proc[] = "--proc-type=primary";
+        char proc_id[] = "--proc-id=0";
+        char* ff_argv[] = {app, conf.data(), proc, proc_id};
+        if (sctp_fs_dpdk_init(4, ff_argv) != 0 || sctp_fs_dpdk_ready() == 0) {
+            std::cerr << "DPDK/F-Stack SCTP initialization failed: " << sctp_fs_last_error() << '\n';
+            return 3;
+        }
+    } else {
+        std::cerr << "invalid --dataplane; expected LOOPBACK or DPDK\n";
+        return 2;
     }
     ::unlink(path.c_str());
     int listen_fd = ::socket(AF_UNIX, SOCK_STREAM, 0);
@@ -202,7 +309,7 @@ int main(int argc, char** argv) {
     std::cerr << "sctp-fstack listening on " << path
               << " abi=" << SCTP_FS_ABI_VERSION
               << " caps=" << sctp_fs_capabilities()
-              << " multi-client loopback\n";
+              << " dataplane=" << dataplane_name << '\n';
 
     std::vector<Client> clients;
     std::vector<Assoc> assocs;
@@ -276,10 +383,12 @@ int main(int argc, char** argv) {
                 case SCTP_FS_CMD_OPEN: {
                     sctp_fs_open(frame.association_id, payload.c_str());
                     std::string name;
+                    std::string type;
                     std::string host;
                     std::string peer;
                     std::istringstream in(payload);
                     std::getline(in, name);
+                    std::getline(in, type);
                     std::getline(in, host);
                     std::getline(in, peer);
                     Assoc* existing = find_assoc(assocs, client->id, frame.association_id);
@@ -293,10 +402,16 @@ int main(int argc, char** argv) {
                     existing->host_port = frame.stream_id;
                     existing->peer = peer;
                     existing->peer_port = frame.ppid;
+                    existing->server = type == "SERVER";
                     existing->open = true;
-                    Assoc* peer_assoc = find_peer(assocs, *existing);
-                    if (peer_assoc != nullptr) {
-                        bring_up(clients, *existing, *peer_assoc);
+                    if (dataplane == Dataplane::LOOPBACK) {
+                        Assoc* peer_assoc = find_peer(assocs, *existing);
+                        if (peer_assoc != nullptr) {
+                            bring_up(clients, *existing, *peer_assoc);
+                        }
+                    } else if (!open_network(*existing)) {
+                        reply(fd, SCTP_FS_EVT_LOST, frame.association_id, 0,
+                                "F-Stack SCTP open failed");
                     }
                     break;
                 }
@@ -305,6 +420,11 @@ int main(int argc, char** argv) {
                     Assoc* existing = find_assoc(assocs, client->id, frame.association_id);
                     if (existing != nullptr) {
                         existing->open = false;
+                        existing->up = false;
+                        if (existing->network_fd >= 0) sctp_fs_close_fd(existing->network_fd);
+                        if (existing->listen_fd >= 0) sctp_fs_close_fd(existing->listen_fd);
+                        existing->network_fd = -1;
+                        existing->listen_fd = -1;
                         Assoc* peer_assoc = find_peer(assocs, *existing);
                         if (peer_assoc != nullptr) {
                             Client* dest = find_client(clients, peer_assoc->client_id);
@@ -331,11 +451,16 @@ int main(int argc, char** argv) {
                     slot.kind = SCTP_FS_EVT_PAYLOAD;
                     slot.stream_id = frame.stream_id;
                     slot.ppid = frame.ppid;
+                    slot.flags = frame.flags;
                     slot.payload_len = std::min(frame.payload_len, SCTP_FS_RING_SLOT_PAYLOAD);
                     if (slot.payload_len > 0) {
                         std::memcpy(slot.payload, payload.data(), static_cast<size_t>(slot.payload_len));
                     }
-                    if (!forward_payload(clients, assocs, client->id, slot) && client->to_native) {
+                    Assoc* network_assoc = find_assoc(assocs, client->id, frame.association_id);
+                    bool sent = dataplane == Dataplane::DPDK
+                            ? network_assoc != nullptr && send_network(*network_assoc, slot)
+                            : forward_payload(clients, assocs, client->id, slot);
+                    if (!sent && client->to_native) {
                         if (!client->to_native->offer(slot)) {
                             reply(fd, SCTP_FS_EVT_CONGESTION, frame.association_id, frame.generation, "");
                         }
@@ -355,9 +480,64 @@ int main(int argc, char** argv) {
             }
             sctp_fs_ring_slot_t slot {};
             while (client.to_native->poll(&slot)) {
-                if (!forward_payload(clients, assocs, client.id, slot)) {
+                Assoc* network_assoc = find_assoc(assocs, client.id, slot.association_id);
+                bool sent = dataplane == Dataplane::DPDK
+                        ? network_assoc != nullptr && send_network(*network_assoc, slot)
+                        : forward_payload(clients, assocs, client.id, slot);
+                if (!sent) {
                     std::cerr << "no peer for assoc=" << slot.association_id
                               << " client=" << client.id << '\n';
+                }
+            }
+        }
+        if (dataplane == Dataplane::DPDK) {
+            for (auto& assoc : assocs) {
+                if (!assoc.open) continue;
+                if (assoc.server && assoc.network_fd < 0 && assoc.listen_fd >= 0) {
+                    int accepted = sctp_fs_accept(assoc.listen_fd);
+                    if (accepted >= 0) {
+                        sctp_fs_set_nonblocking(accepted);
+                        assoc.network_fd = accepted;
+                        bring_up(clients, assoc);
+                    }
+                } else if (!assoc.server && assoc.network_fd >= 0 && !assoc.up) {
+                    int socket_error = sctp_fs_socket_error(assoc.network_fd);
+                    if (socket_error == 0) {
+                        bring_up(clients, assoc);
+                    } else if (socket_error != EINPROGRESS && socket_error != EALREADY
+                            && socket_error != EAGAIN) {
+                        Client* owner = find_client(clients, assoc.client_id);
+                        if (owner != nullptr) reply(owner->fd, SCTP_FS_EVT_LOST,
+                                assoc.assoc_id, assoc.generation, std::strerror(socket_error));
+                        sctp_fs_close_fd(assoc.network_fd);
+                        assoc.network_fd = -1;
+                        assoc.open = false;
+                    }
+                }
+                if (assoc.network_fd < 0 || !assoc.up) continue;
+                sctp_fs_ring_slot_t slot {};
+                slot.association_id = assoc.assoc_id;
+                slot.generation = assoc.generation;
+                slot.kind = SCTP_FS_EVT_PAYLOAD;
+                int notification = 0;
+                int n = sctp_fs_recvv(assoc.network_fd, slot.payload, SCTP_FS_RING_SLOT_PAYLOAD,
+                        &slot.stream_id, &slot.ppid, &notification);
+                if (n > 0 && notification == 0) {
+                    slot.payload_len = n;
+                    Client* dest = find_client(clients, assoc.client_id);
+                    if (dest == nullptr || dest->to_java == nullptr || !dest->to_java->offer(slot)) {
+                        Client* owner = find_client(clients, assoc.client_id);
+                        if (owner != nullptr) reply(owner->fd, SCTP_FS_EVT_CONGESTION,
+                                assoc.assoc_id, assoc.generation, "RX ring full");
+                    }
+                } else if (n == 0) {
+                    Client* owner = find_client(clients, assoc.client_id);
+                    if (owner != nullptr) reply(owner->fd, SCTP_FS_EVT_LOST,
+                            assoc.assoc_id, assoc.generation, "peer closed");
+                    sctp_fs_close_fd(assoc.network_fd);
+                    assoc.network_fd = -1;
+                    assoc.open = false;
+                    assoc.up = false;
                 }
             }
         }

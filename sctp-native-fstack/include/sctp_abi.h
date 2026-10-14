@@ -14,6 +14,7 @@ extern "C" {
 #define SCTP_FS_CAP_DPDK (1u << 1)
 #define SCTP_FS_CAP_MULTIHOMING (1u << 2)
 #define SCTP_FS_CAP_MULTISTREAM (1u << 3)
+#define SCTP_FS_CAP_FSTACK_SCTP (1u << 4)
 
 #define SCTP_FS_CMD_HELLO 1
 #define SCTP_FS_CMD_OPEN 2
@@ -66,6 +67,14 @@ int sctp_fs_send(int64_t association_id, int64_t generation, int stream_id, int 
         const void* payload, int payload_len, int flags);
 int sctp_fs_generation(int64_t association_id, int64_t* out);
 int sctp_fs_capabilities(void);
+int sctp_fs_dpdk_init(int argc, char** argv);
+int sctp_fs_dpdk_ready(void);
+const char* sctp_fs_last_error(void);
+int sctp_fs_listen(int fd, int backlog);
+int sctp_fs_accept(int fd);
+int sctp_fs_close_fd(int fd);
+int sctp_fs_set_nonblocking(int fd);
+int sctp_fs_socket_error(int fd);
 int sctp_fs_socket(int domain);
 int sctp_fs_bindx(int fd, const void* addrs, int addrcnt, int flags);
 int sctp_fs_connectx(int fd, const void* addrs, int addrcnt, void* assoc_id);
