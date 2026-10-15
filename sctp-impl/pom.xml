@@ -99,6 +99,36 @@
 	</dependencies>
 	<build>
 		<plugins>
+			<!-- The association tests persist management state (*_sctp.xml) and logs in this
+			     directory. A run that is interrupted leaves them behind and the next run
+			     starts from that state and fails. Remove them at the start of every build. -->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-clean-plugin</artifactId>
+				<version>3.2.0</version>
+				<executions>
+					<execution>
+						<id>remove-stale-test-state</id>
+						<phase>initialize</phase>
+						<goals>
+							<goal>clean</goal>
+						</goals>
+						<configuration>
+							<excludeDefaultDirectories>true</excludeDefaultDirectories>
+							<filesets>
+								<fileset>
+									<directory>${project.basedir}</directory>
+									<includes>
+										<include>*_sctp.xml</include>
+										<include>sctptest.log*</include>
+									</includes>
+									<followSymlinks>false</followSymlinks>
+								</fileset>
+							</filesets>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
 				<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-surefire-plugin</artifactId>

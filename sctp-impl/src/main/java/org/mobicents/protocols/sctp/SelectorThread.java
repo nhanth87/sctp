@@ -89,6 +89,9 @@ public class SelectorThread implements Runnable {
 	 * 
 	 * @see java.lang.Runnable#run()
 	 */
+	/** Pending changes taken off the MPSC queue; touched by the selector thread only. */
+	private final java.util.List<ChangeRequest> deferredConnects = new java.util.ArrayList<>();
+
 	@Override
 	public void run() {
 		if (logger.isInfoEnabled()) {
@@ -98,38 +101,54 @@ public class SelectorThread implements Runnable {
 			try {
 				MpscArrayQueue<ChangeRequest> pendingChanges = this.management.getPendingChanges();
 
-				// Process any pending changes
+				// Process any pending changes. The queue is a JCTools MPSC queue: it has no
+				// remove(Object) (the iterator throws "remove"), so it is drained with poll()
+				// by this, its only consumer. A CONNECT that is not yet due is parked in a
+				// list owned by this thread and retried on the next round, instead of being
+				// left in the queue where every round threw and logged forever.
 				synchronized (pendingChanges) {
-					Iterator<ChangeRequest> changes = pendingChanges.iterator();
-					while (changes.hasNext()) {
-						ChangeRequest change = changes.next();
+					ChangeRequest change;
+					while ((change = pendingChanges.poll()) != null) {
+						deferredConnects.add(change);
+					}
+				}
+				for (Iterator<ChangeRequest> changes = deferredConnects.iterator(); changes.hasNext();) {
+					ChangeRequest change = changes.next();
+					try {
 						switch (change.getType()) {
 						case ChangeRequest.CHANGEOPS:
-							pendingChanges.remove(change);
+							changes.remove();
 							SelectionKey key = change.getSocketChannel().keyFor(this.selector);
-							key.interestOps(change.getOps());
+							if (key != null) {
+								key.interestOps(change.getOps());
+							}
 							break;
 						case ChangeRequest.REGISTER:
-							pendingChanges.remove(change);
+							changes.remove();
 							SelectionKey key1 = change.getSocketChannel().register(this.selector, change.getOps());
 							key1.attach(change.getAssociation());
 							break;
 						case ChangeRequest.CONNECT:
 							if (!change.getAssociation().isStarted()) {
-								// if Association is stopped - remove pending connection requests  
-								pendingChanges.remove(change);
-							} else {
-								if (change.getExecutionTime() <= currentTimeMillis()) {
-									pendingChanges.remove(change);
-									change.getAssociation().initiateConnection();
-								}
+								// if Association is stopped - drop pending connection requests
+								changes.remove();
+							} else if (change.getExecutionTime() <= currentTimeMillis()) {
+								changes.remove();
+								change.getAssociation().initiateConnection();
 							}
 							break;
 						case ChangeRequest.CLOSE:
-							pendingChanges.remove(change);
+							changes.remove();
 							change.getAssociation().close();
+							break;
+						default:
+							changes.remove();
 						}
-					}// end of while
+					} catch (Exception e) {
+						// one bad change must not starve the others or spin the loop
+						changes.remove();
+						logger.error("Error while applying a pending change", e);
+					}
 				}
 
 				// Wait for an event one of the registered channels
