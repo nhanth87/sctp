@@ -73,14 +73,28 @@ public class NettySctpChannelInboundHandlerAdapter extends ChannelInboundHandler
             logger.debug(String.format("channelInactive event: association=%s", this.association));
         }
 
-        if (this.association != null)
-            this.association.markAssociationDown();
+        if (this.association == null) {
+            return;
+        }
+        if (this.association.isSuperseded(this)) {
+            logger.warn(String.format(
+                    "channelInactive from a replaced channel of Association=%s ignored; the live channel stays up",
+                    this.association.getName()));
+            return;
+        }
+        this.association.markAssociationDown();
     }
 
     @Override
     public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
         if (logger.isEnabledFor(Level.DEBUG)) {
             logger.debug(String.format("userEventTriggered event: association=%s \nevent=%s", this.association, evt));
+        }
+
+        if (this.association != null && this.association.isSuperseded(this)) {
+            logger.warn(String.format("SCTP notification %s from a replaced channel of Association=%s ignored",
+                    evt, this.association.getName()));
+            return;
         }
 
         if (evt instanceof AssociationChangeNotification) {
