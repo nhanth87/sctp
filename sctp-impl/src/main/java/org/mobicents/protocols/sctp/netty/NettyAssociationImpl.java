@@ -120,8 +120,9 @@ public class NettyAssociationImpl implements Association {
     @JsonIgnore
     private int lastMaxOutboundStreams = 0;
 
+    // Written by the event loop of the old and of the new channel during an SCTP RESTART.
     @JsonIgnore
-    private NettySctpChannelInboundHandlerAdapter channelHandler;
+    private volatile NettySctpChannelInboundHandlerAdapter channelHandler;
     
     @JsonIgnore
     protected int congLevel;
@@ -615,7 +616,14 @@ public class NettyAssociationImpl implements Association {
         NettySctpChannelInboundHandlerAdapter handler = this.channelHandler;
         if (handler != null) {
             handler.closeChannel();
+            this.releaseChannelHandler(handler);
         }
+
+        // Go down now, not when the old channel's channelInactive arrives. On an SCTP RESTART
+        // the M3UA layer calls stop() + start() and the peer reconnects within milliseconds;
+        // waiting for channelInactive let the new channel come up first, so the ASP never left
+        // ACTIVE and the late close then took the live association down (2026-10-08).
+        this.markAssociationDown();
     }
 
     protected void read(PayloadData payload) {
@@ -703,8 +711,32 @@ public class NettyAssociationImpl implements Association {
         }, connectDelay, TimeUnit.MILLISECONDS);
     }
 
-    protected void setChannelHandler(NettySctpChannelInboundHandlerAdapter channelHandler) {
+    protected synchronized void setChannelHandler(NettySctpChannelInboundHandlerAdapter channelHandler) {
         this.channelHandler = channelHandler;
+    }
+
+    /**
+     * Unbinds {@code handler} only if it is still the bound one. A channel that has been replaced
+     * delivers its close events after the new channel is bound; clearing unconditionally there
+     * detached the live channel, which kept reading payload while sends failed.
+     *
+     * @return true when {@code handler} was bound and has been released
+     */
+    protected synchronized boolean releaseChannelHandler(NettySctpChannelInboundHandlerAdapter handler) {
+        if (this.channelHandler != handler) {
+            return false;
+        }
+        this.channelHandler = null;
+        return true;
+    }
+
+    /**
+     * True when another channel has been bound since {@code handler} was: its events describe a
+     * connection that no longer carries this association and must not change its state.
+     */
+    protected boolean isSuperseded(NettySctpChannelInboundHandlerAdapter handler) {
+        NettySctpChannelInboundHandlerAdapter current = this.channelHandler;
+        return current != null && current != handler;
     }
 
     protected void connect() {

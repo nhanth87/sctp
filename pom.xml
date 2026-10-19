@@ -9,7 +9,7 @@
 
 	<groupId>org.mobicents.protocols.sctp</groupId>
 	<artifactId>sctp-parent</artifactId>
-	<version>2.27.32</version>
+	<version>2.27.33</version>
 	<name>Restcomm :: SCTP :: Parent :: ${pom.artifactId}</name>
 	<packaging>pom</packaging>
 

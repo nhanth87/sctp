@@ -48,7 +48,11 @@ public class NettySctpClientHandler extends NettySctpChannelInboundHandlerAdapte
     @Override
     public void channelUnregistered(final ChannelHandlerContext ctx) throws Exception {
         logger.warn(String.format("ChannelUnregistered event: association=%s", association));
-        this.association.setChannelHandler(null);
+        if (this.association.isSuperseded(this)) {
+            // A newer channel already carries the association; reconnecting would open a third.
+            return;
+        }
+        this.association.releaseChannelHandler(this);
 
         this.association.scheduleConnect();
     }
