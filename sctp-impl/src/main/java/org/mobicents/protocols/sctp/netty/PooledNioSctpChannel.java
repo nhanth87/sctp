@@ -98,7 +98,12 @@ public class PooledNioSctpChannel extends NioSctpChannel {
 
         ByteBuffer nioData;
         ByteBuf pooled = null;
-        
+
+        // Copy with getBytes, never readBytes: the message must stay readable until send()
+        // accepts it. With the socket send buffer full (peer a_rwnd 0) send() returns 0 and
+        // Netty calls this method again for the SAME message (write-spin, then OP_WRITE). A
+        // consumed buffer then reads as empty -> "return true" above -> the message was dropped
+        // silently while its write future reported success (2.27.34).
         // Fast path: direct buffer with single NIO buffer - use ThreadLocal pooling (v2.0.13)
         if (data.isDirect() && data.nioBufferCount() == 1) {
             ByteBuf outputBuf = OUTPUT_BUFFER_POOL.get();
@@ -107,12 +112,12 @@ public class PooledNioSctpChannel extends NioSctpChannel {
                 outputBuf.capacity(dataLen);
             }
             outputBuf.clear();
-            data.readBytes(outputBuf, dataLen);
+            data.getBytes(data.readerIndex(), outputBuf, dataLen);
             nioData = outputBuf.internalNioBuffer(outputBuf.readerIndex(), outputBuf.readableBytes());
         } else {
             // Slow path: need to copy/convert
             pooled = config().getAllocator().directBuffer(dataLen);
-            data.readBytes(pooled);
+            data.getBytes(data.readerIndex(), pooled, dataLen);
             nioData = pooled.internalNioBuffer(pooled.readerIndex(), pooled.readableBytes());
         }
 
